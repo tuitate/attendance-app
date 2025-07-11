@@ -18,6 +18,12 @@ def hash_password(password):
     """パスワードをSHA-256でハッシュ化する"""
     return hashlib.sha256(password.encode()).hexdigest()
 
+JST = timezone(timedelta(hours=9))
+
+def get_jst_now():
+    """タイムゾーンをJSTとして現在の時刻を取得する"""
+    return datetime.now(JST)
+
 def add_message(user_id, content):
     """メッセージをデータベースに追加する"""
     conn = get_db_connection()
@@ -267,7 +273,7 @@ def show_login_register_page():
 def show_timecard_page():
     st_autorefresh(interval=1000, key="clock_refresh")
     st.title(f"ようこそ、{st.session_state.user_name}さん")
-    st.header(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    st.header(get_jst_now().strftime("%Y-%m-%d %H:%M:%S"))
 
     action_map = {
         'clock_in': {'message': '出勤しますか？', 'func': record_clock_in},
@@ -598,7 +604,7 @@ def show_work_status_page():
 # --- Stamping Logic ---
 def record_clock_in():
     conn = get_db_connection()
-    now = datetime.now()
+    now = get_jst_now()
     cursor = conn.cursor()
     cursor.execute('INSERT INTO attendance (user_id, work_date, clock_in) VALUES (?, ?, ?)', (st.session_state.user_id, now.date().isoformat(), now.isoformat()))
     conn.commit()
@@ -609,7 +615,7 @@ def record_clock_in():
 
 def record_clock_out():
     conn = get_db_connection()
-    now = datetime.now()
+    now = get_jst_now()
     conn.execute('UPDATE attendance SET clock_out = ? WHERE id = ?', (now.isoformat(), st.session_state.attendance_id))
     conn.commit()
     att = conn.execute('SELECT * FROM attendance WHERE id = ?', (st.session_state.attendance_id,)).fetchone()
@@ -630,7 +636,7 @@ def record_clock_out():
 
 def record_break_start():
     conn = get_db_connection()
-    now = datetime.now()
+    now = get_jst_now()
     cursor = conn.cursor()
     cursor.execute('INSERT INTO breaks (attendance_id, break_start) VALUES (?, ?)', (st.session_state.attendance_id, now.isoformat()))
     conn.commit()
@@ -640,7 +646,7 @@ def record_break_start():
 
 def record_break_end():
     conn = get_db_connection()
-    now = datetime.now()
+    now = get_jst_now()
     conn.execute('UPDATE breaks SET break_end = ? WHERE id = ?', (now.isoformat(), st.session_state.break_id))
     conn.commit()
     st.session_state.work_status = "working"
