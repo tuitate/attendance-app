@@ -787,7 +787,12 @@ def main():
              st.rerun()
 
         if st.sidebar.button("ログアウト"):
-            st.session_state.clear()
+            # ログイン状態に関するキーだけをリセットする
+            st.session_state.logged_in = False
+            st.session_state.user_id = None
+            st.session_state.user_name = None
+            # pageをデフォルトに戻す
+            st.session_state.page = "タイムカード"
             st.rerun()
 
         page_to_show = st.session_state.get('page', "タイムカード")
