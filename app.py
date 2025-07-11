@@ -332,7 +332,7 @@ def show_timecard_page():
 
 def show_shift_management_page():
     st.header("シフト管理")
-    st.info("カレンダーの日付または登録済みのシフトをクリックして編集できます。ページを変更したら更新されています。")
+    st.info("カレンダーの日付または登録済みのシフトをクリックして編集できます。シフトの反映はページを変更するか、月を変更することで反映されます。")
 
     conn = get_db_connection()
     shifts = conn.execute('SELECT id, start_datetime, end_datetime FROM shifts WHERE user_id = ?', (st.session_state.user_id,)).fetchall()
