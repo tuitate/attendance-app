@@ -27,7 +27,7 @@ def get_jst_now():
 def add_message(user_id, content):
     """メッセージをデータベースに追加する"""
     conn = get_db_connection()
-    now = datetime.now().isoformat()
+    now = get_jst_now().isoformat()
     conn.execute('INSERT INTO messages (user_id, content, created_at) VALUES (?, ?, ?)',
                  (user_id, content, now))
     conn.commit()
@@ -38,7 +38,7 @@ def add_broadcast_message(content):
     conn = get_db_connection()
     try:
         all_user_ids = conn.execute('SELECT id FROM users').fetchall()
-        now = datetime.now().isoformat()
+        now = get_jst_now().isoformat()
         for user_row in all_user_ids:
             conn.execute('INSERT INTO messages (user_id, content, created_at) VALUES (?, ?, ?)',
                          (user_row['id'], content, now))
@@ -95,7 +95,7 @@ def register_user(name, employee_id, password):
     """新規ユーザーを登録"""
     conn = get_db_connection()
     hashed_password = hash_password(password)
-    now = datetime.now().isoformat()
+    now = get_jst_now().isoformat()
     try:
         conn.execute('INSERT INTO users (name, employee_id, password_hash, created_at) VALUES (?, ?, ?, ?)',
                      (name, employee_id, hashed_password, now))
@@ -310,7 +310,7 @@ def show_timecard_page():
                     if shift:
                         start_dt = datetime.fromisoformat(shift['start_datetime'])
                         earliest_clock_in = start_dt - timedelta(minutes=5)
-                        if datetime.now() < earliest_clock_in:
+                        if get_jst_now() < earliest_clock_in:
                             st.toast(f"出勤時刻の5分前（{earliest_clock_in.strftime('%H:%M')}）から打刻できます。", icon="⚠️")
                             can_clock_in = False
                     if can_clock_in:
@@ -691,7 +691,7 @@ def display_work_summary():
                 scheduled_break_start_time_str = break_start_estimate_dt.strftime('%H:%M')
                 scheduled_break_str = f"{scheduled_break_start_time_str} に {scheduled_break_minutes}分"
                 reminder_time = break_start_estimate_dt - timedelta(minutes=10)
-                now = datetime.now()
+                now = get_jst_now()
                 if st.session_state.last_break_reminder_date != today_str:
                     if now >= reminder_time and now < break_start_estimate_dt:
                         add_message(st.session_state.user_id, "⏰ まもなく休憩の時間です。準備をしてください。")
@@ -712,7 +712,7 @@ def display_work_summary():
                 if br['break_start'] and br['break_end']:
                     total_break_seconds += (datetime.fromisoformat(br['break_end']) - datetime.fromisoformat(br['break_start'])).total_seconds()
                 elif br['break_start']:
-                    total_break_seconds += (datetime.now() - datetime.fromisoformat(br['break_start'])).total_seconds()
+                    total_break_seconds += (get_jst_now() - datetime.fromisoformat(br['break_start'])).total_seconds()
             break_hours, rem = divmod(total_break_seconds, 3600)
             break_minutes, _ = divmod(rem, 60)
             st.metric("現在の休憩時間", f"{int(break_hours):02}:{int(break_minutes):02}")
@@ -722,7 +722,7 @@ def display_work_summary():
                 clock_out_time = datetime.fromisoformat(att['clock_out'])
                 total_work_seconds = (clock_out_time - datetime.fromisoformat(att['clock_in'])).total_seconds()
             else:
-                total_work_seconds = (datetime.now() - datetime.fromisoformat(att['clock_in'])).total_seconds()
+                total_work_seconds = (get_jst_now() - datetime.fromisoformat(att['clock_in'])).total_seconds()
             net_work_seconds = total_work_seconds - total_break_seconds
             work_hours, rem = divmod(net_work_seconds, 3600)
             work_minutes, _ = divmod(rem, 60)
