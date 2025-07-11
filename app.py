@@ -670,7 +670,7 @@ def display_work_summary():
         conn = get_db_connection()
         att = conn.execute('SELECT * FROM attendance WHERE id = ?', (st.session_state.attendance_id,)).fetchone()
         breaks = conn.execute('SELECT * FROM breaks WHERE attendance_id = ?', (st.session_state.attendance_id,)).fetchall()
-        today_str = date.today().isoformat()
+        today_str = get_jst_now().date().isoformat()
         shift = conn.execute("SELECT start_datetime, end_datetime FROM shifts WHERE user_id = ? AND date(start_datetime) = ?", (st.session_state.user_id, today_str)).fetchone()
         conn.close()
         scheduled_end_time_str = "---"
