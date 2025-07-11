@@ -302,17 +302,30 @@ def show_timecard_page():
         else:
             if st.session_state.work_status == "not_started":
                 if st.button("出勤", key="clock_in", use_container_width=True):
+                    # ★★★ ここからが修正箇所です ★★★
                     conn = get_db_connection()
-                    today_str = date.today().isoformat()
-                    shift = conn.execute("SELECT start_datetime FROM shifts WHERE user_id = ? AND date(start_datetime) = ?", (st.session_state.user_id, today_str)).fetchone()
+                    today_str = get_jst_now().date().isoformat()
+                    shift = conn.execute(
+                        "SELECT start_datetime FROM shifts WHERE user_id = ? AND date(start_datetime) = ?",
+                        (st.session_state.user_id, today_str)
+                    ).fetchone()
                     conn.close()
+
                     can_clock_in = True
+                    # その日のシフトが登録されている場合のみ、時刻をチェック
                     if shift:
-                        start_dt = datetime.fromisoformat(shift['start_datetime'])
+                        now = get_jst_now()
+                        # データベースの時刻文字列を、タイムゾーン情報を持つdatetimeオブジェクトに変換
+                        start_dt = datetime.fromisoformat(shift['start_datetime']).astimezone(JST)
+                        # シフト開始5分前を計算
                         earliest_clock_in = start_dt - timedelta(minutes=5)
-                        if get_jst_now() < earliest_clock_in:
-                            st.toast(f"出勤時刻の5分前（{earliest_clock_in.strftime('%H:%M')}）から打刻できます。", icon="⚠️")
+
+                        # 現在時刻が、許容時刻より早い場合
+                        if now < earliest_clock_in:
+                            st.toast(f"出勤は、シフト開始5分前（{earliest_clock_in.strftime('%H:%M')}）から可能です。", icon="⏰")
                             can_clock_in = False
+                    
+                    # 出勤が可能な場合のみ、確認ステップに進む
                     if can_clock_in:
                         st.session_state.confirmation_action = 'clock_in'
                         st.rerun()
