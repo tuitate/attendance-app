@@ -666,46 +666,65 @@ def record_clock_in_cancellation():
         st.session_state.break_id = None
 
 def display_work_summary():
+    """勤務時間のサマリーを表示"""
     if st.session_state.get('attendance_id'):
         conn = get_db_connection()
         att = conn.execute('SELECT * FROM attendance WHERE id = ?', (st.session_state.attendance_id,)).fetchone()
         breaks = conn.execute('SELECT * FROM breaks WHERE attendance_id = ?', (st.session_state.attendance_id,)).fetchall()
+        
         today_str = get_jst_now().date().isoformat()
-        shift = conn.execute("SELECT start_datetime, end_datetime FROM shifts WHERE user_id = ? AND date(start_datetime) = ?", (st.session_state.user_id, today_str)).fetchone()
+        
+        shift = conn.execute(
+            "SELECT start_datetime, end_datetime FROM shifts WHERE user_id = ? AND date(start_datetime) = ?",
+            (st.session_state.user_id, today_str)
+        ).fetchone()
         conn.close()
+
         scheduled_end_time_str = "---"
         scheduled_break_str = "---"
+        
         if shift:
             start_dt = datetime.fromisoformat(shift['start_datetime'])
             end_dt = datetime.fromisoformat(shift['end_datetime'])
             scheduled_end_time_str = end_dt.strftime('%H:%M')
+            
             shift_duration = end_dt - start_dt
             scheduled_work_hours = shift_duration.total_seconds() / 3600
             scheduled_break_minutes = 0
+            
             if scheduled_work_hours > 8:
                 scheduled_break_minutes = 60
             elif scheduled_work_hours > 6:
                 scheduled_break_minutes = 45
+            
             if scheduled_break_minutes > 0:
                 break_start_estimate_dt = start_dt + (shift_duration / 2) - timedelta(minutes=scheduled_break_minutes / 2)
                 scheduled_break_start_time_str = break_start_estimate_dt.strftime('%H:%M')
                 scheduled_break_str = f"{scheduled_break_start_time_str} に {scheduled_break_minutes}分"
+
                 reminder_time = break_start_estimate_dt - timedelta(minutes=10)
                 now = get_jst_now()
+                
                 if st.session_state.last_break_reminder_date != today_str:
-                    if now >= reminder_time and now < break_start_estimate_dt:
+                    # ★★★ 修正点: タイムゾーンを合わせて比較 ★★★
+                    if now.astimezone(JST) >= reminder_time.astimezone(JST) and now.astimezone(JST) < break_start_estimate_dt.astimezone(JST):
                         add_message(st.session_state.user_id, "⏰ まもなく休憩の時間です。準備をしてください。")
                         st.session_state.last_break_reminder_date = today_str
                         st.toast("休憩10分前のお知らせをメッセージに送信しました。")
+
         st.divider()
         row1_col1, row1_col2 = st.columns(2)
         row2_col1, row2_col2 = st.columns(2)
+
         with row1_col1:
             st.metric("出勤時刻", datetime.fromisoformat(att['clock_in']).strftime('%H:%M:%S') if att['clock_in'] else "---")
+        
         with row1_col2:
             st.metric("退勤予定時刻", scheduled_end_time_str)
+
         with row2_col1:
             st.metric("休憩予定", scheduled_break_str)
+        
         with row2_col2:
             total_break_seconds = 0
             for br in breaks:
@@ -716,6 +735,7 @@ def display_work_summary():
             break_hours, rem = divmod(total_break_seconds, 3600)
             break_minutes, _ = divmod(rem, 60)
             st.metric("現在の休憩時間", f"{int(break_hours):02}:{int(break_minutes):02}")
+        
         st.divider()
         if att['clock_in']:
             if att['clock_out']:
@@ -723,12 +743,14 @@ def display_work_summary():
                 total_work_seconds = (clock_out_time - datetime.fromisoformat(att['clock_in'])).total_seconds()
             else:
                 total_work_seconds = (get_jst_now() - datetime.fromisoformat(att['clock_in'])).total_seconds()
+            
             net_work_seconds = total_work_seconds - total_break_seconds
             work_hours, rem = divmod(net_work_seconds, 3600)
             work_minutes, _ = divmod(rem, 60)
             st.metric("総勤務時間", f"{int(work_hours):02}:{int(work_minutes):02}")
         else:
             st.metric("総勤務時間", "00:00")
+
         st.divider()
 
 def main():
