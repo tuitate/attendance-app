@@ -91,14 +91,20 @@ def get_user(employee_id):
     conn.close()
     return user
 
-def register_user(name, employee_id, password):
+### 変更点 ###
+# register_user関数にcompanyとposition引数を追加
+def register_user(name, employee_id, password, company, position):
     """新規ユーザーを登録"""
     conn = get_db_connection()
     hashed_password = hash_password(password)
     now = get_jst_now().isoformat()
     try:
-        conn.execute('INSERT INTO users (name, employee_id, password_hash, created_at) VALUES (?, ?, ?, ?)',
-                     (name, employee_id, hashed_password, now))
+        # ### 変更点 ###
+        # データベースのusersテーブルにcompanyとpositionを保存するようにINSERT文を修正
+        # 事前に `ALTER TABLE users ADD COLUMN company TEXT;` と
+        # `ALTER TABLE users ADD COLUMN position TEXT;` を実行してテーブル構造を変更しておく必要があります。
+        conn.execute('INSERT INTO users (name, employee_id, password_hash, created_at, company, position) VALUES (?, ?, ?, ?, ?, ?)',
+                     (name, employee_id, hashed_password, now, company, position))
         conn.commit()
         return True
     except sqlite3.IntegrityError:
@@ -178,49 +184,42 @@ def shift_edit_dialog(target_date):
         start_time_input = st.time_input("出勤時刻", value=default_start.time())
         end_time_input = st.time_input("退勤時刻", value=default_end.time())
     
-                        # ★★★ ここからが今回の主要な修正箇所です ★★★
-                    # タイムゾーン情報のないnaiveなdatetimeを作成
-                    naive_start_dt = datetime.combine(start_date_input, start_time_input)
-                    naive_end_dt = datetime.combine(end_date_input, end_time_input)
-                    
-                    # JSTのタイムゾーン情報を付与してawareなdatetimeに変換
-                    start_datetime = naive_start_dt.astimezone(JST)
-                    end_datetime = naive_end_dt.astimezone(JST)
-                    
-                    c1, c2, c3 = st.columns([2, 2, 1])
-                    with c1:
-                        if st.form_submit_button("登録・更新", use_container_width=True, type="primary"):
-                            if start_datetime >= end_datetime:
-                                st.error("出勤日時は退勤日時より前に設定してください。")
-                            else:
-                                conn = get_db_connection()
-                                if existing_shift:
-                                    conn.execute('UPDATE shifts SET start_datetime = ?, end_datetime = ? WHERE id = ?', (start_datetime.isoformat(), end_datetime.isoformat(), existing_shift['id']))
-                                else:
-                                    conn.execute('INSERT INTO shifts (user_id, start_datetime, end_datetime) VALUES (?, ?, ?)', (st.session_state.user_id, start_datetime.isoformat(), end_datetime.isoformat()))
-                                conn.commit()
-                                conn.close()
-                                st.session_state.last_shift_start_time = start_datetime.time()
-                                st.session_state.last_shift_end_time = end_datetime.time()
-                                st.success("✅ シフトを保存しました！")
-                                py_time.sleep(1)
-                                st.session_state.clicked_date_str = None
-                                st.rerun()
-                    with c2:
-                        if st.form_submit_button("削除", use_container_width=True):
-                            if existing_shift:
-                                conn = get_db_connection()
-                                conn.execute('DELETE FROM shifts WHERE id = ?', (existing_shift['id'],))
-                                conn.commit()
-                                conn.close()
-                                st.success("🗑️ シフトを削除しました。")
-                                py_time.sleep(1)
-                            st.session_state.clicked_date_str = None
-                            st.rerun()
-                    with c3:
-                        if st.form_submit_button("閉じる"):
-                            st.session_state.clicked_date_str = None
-                            st.rerun()
+    start_datetime = datetime.combine(start_date_input, start_time_input)
+    end_datetime = datetime.combine(end_date_input, end_time_input)
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("登録・更新", use_container_width=True, type="primary"):
+            if start_datetime >= end_datetime:
+                st.error("出勤日時は退勤日時より前に設定してください。")
+            else:
+                conn = get_db_connection()
+                if existing_shift:
+                    conn.execute('UPDATE shifts SET start_datetime = ?, end_datetime = ? WHERE id = ?', 
+                                 (start_datetime.isoformat(), end_datetime.isoformat(), existing_shift['id']))
+                else:
+                    conn.execute('INSERT INTO shifts (user_id, start_datetime, end_datetime) VALUES (?, ?, ?)', 
+                                 (st.session_state.user_id, start_datetime.isoformat(), end_datetime.isoformat()))
+                conn.commit()
+                conn.close()
+                st.session_state.last_shift_start_time = start_datetime.time()
+                st.session_state.last_shift_end_time = end_datetime.time()
+                st.toast("シフトを保存しました！", icon="✅")
+                py_time.sleep(1.5) # 1秒待ってから画面を更新
+                st.session_state.clicked_date_str = None
+                st.rerun()
+
+    with col2:
+        if st.button("削除", use_container_width=True):
+            if existing_shift:
+                conn = get_db_connection()
+                conn.execute('DELETE FROM shifts WHERE id = ?', (existing_shift['id'],))
+                conn.commit()
+                conn.close()
+                st.toast("シフトを削除しました。", icon="🗑️")
+                py_time.sleep(1.5) # 1秒待ってから画面を更新
+                st.session_state.clicked_date_str = None
+            st.rerun()
 
 # --- UI Components ---
 def show_login_register_page():
@@ -249,14 +248,21 @@ def show_login_register_page():
         with st.form("register_form"):
             st.markdown("パスワードは、大文字、小文字、数字を含む8文字以上で設定してください。")
             new_name = st.text_input("名前")
+            ### 変更点 ###
+            # 会社名入力欄を追加
+            new_company = st.text_input("会社名")
+            # 役職選択ラジオボタンを追加
+            new_position = st.radio("役職", ("社長", "役職者", "社員", "バイト"), horizontal=True)
             new_employee_id = st.text_input("従業員ID")
             new_password = st.text_input("パスワード", type="password")
             confirm_password = st.text_input("パスワード（確認用）", type="password")
             submitted = st.form_submit_button("登録してログイン")
             if submitted:
                 password_errors = validate_password(new_password)
-                if not (new_name and new_employee_id and new_password):
-                    st.warning("すべての項目を入力してください。")
+                ### 変更点 ###
+                # 必須項目チェックに会社名を追加
+                if not (new_name and new_company and new_employee_id and new_password):
+                    st.warning("名前、会社名、従業員ID、パスワードは必須項目です。")
                 elif not new_employee_id.isdigit():
                     st.error("従業員IDは数字で入力してください。")
                 elif new_password != confirm_password:
@@ -265,7 +271,9 @@ def show_login_register_page():
                     error_message = "パスワードは以下の要件を満たす必要があります：\n" + "\n".join(password_errors)
                     st.error(error_message)
                 else:
-                    if register_user(new_name, new_employee_id, new_password):
+                    ### 変更点 ###
+                    # register_user関数に新しい引数を渡す
+                    if register_user(new_name, new_employee_id, new_password, new_company, new_position):
                         st.success("登録が完了しました。")
                         user = get_user(new_employee_id)
                         if user:
@@ -309,31 +317,17 @@ def show_timecard_page():
         else:
             if st.session_state.work_status == "not_started":
                 if st.button("出勤", key="clock_in", use_container_width=True):
-                    # ★★★ ここからが修正箇所です ★★★
                     conn = get_db_connection()
-                    today_str = get_jst_now().date().isoformat()
-                    shift = conn.execute(
-                        "SELECT start_datetime FROM shifts WHERE user_id = ? AND date(start_datetime) = ?",
-                        (st.session_state.user_id, today_str)
-                    ).fetchone()
+                    today_str = date.today().isoformat()
+                    shift = conn.execute("SELECT start_datetime FROM shifts WHERE user_id = ? AND date(start_datetime) = ?", (st.session_state.user_id, today_str)).fetchone()
                     conn.close()
-
                     can_clock_in = True
-                    # その日のシフトが登録されている場合のみ、時刻をチェック
                     if shift:
-                        now = get_jst_now()
-                        # データベースの時刻文字列を、タイムゾーン情報を持つdatetimeオブジェクトに変換
-                        start_dt = datetime.fromisoformat(shift['start_datetime']).astimezone(JST)
-                        # シフト開始5分前を計算
+                        start_dt = datetime.fromisoformat(shift['start_datetime'])
                         earliest_clock_in = start_dt - timedelta(minutes=5)
-
-                        # 現在時刻が、許容時刻より早い場合
-                        if now < earliest_clock_in:
-                            st.toast(f"出勤は、シフト開始5分前（{earliest_clock_in.strftime('%H:%M')}）から可能です。", icon="⏰")
-                            py_time.sleep(1)
+                        if get_jst_now() < earliest_clock_in:
+                            st.toast(f"出勤時刻の5分前（{earliest_clock_in.strftime('%H:%M')}）から打刻できます。", icon="⚠️")
                             can_clock_in = False
-                    
-                    # 出勤が可能な場合のみ、確認ステップに進む
                     if can_clock_in:
                         st.session_state.confirmation_action = 'clock_in'
                         st.rerun()
@@ -358,9 +352,8 @@ def show_timecard_page():
     display_work_summary()
 
 def show_shift_management_page():
-    # ★★★ この関数全体を修正 ★★★
     st.header("シフト管理")
-    st.info("カレンダーの日付または登録済みのシフトをクリックして編集できます。")
+    st.info("カレンダーの日付または登録済みのシフトをクリックして編集できます。シフトの反映はページを変更するか、月を変更することで反映されます。")
 
     conn = get_db_connection()
     shifts = conn.execute('SELECT id, start_datetime, end_datetime FROM shifts WHERE user_id = ?', (st.session_state.user_id,)).fetchall()
@@ -370,23 +363,23 @@ def show_shift_management_page():
     for shift in shifts:
         start_dt = datetime.fromisoformat(shift['start_datetime'])
         end_dt = datetime.fromisoformat(shift['end_datetime'])
+        
         title = f"{start_dt.strftime('%H:%M')}~{end_dt.strftime('%H:%M')}"
         if start_dt.time() >= time(22, 0) or end_dt.time() <= time(5, 0):
             title += " (夜)"
+
         events.append({"title": title, "start": start_dt.isoformat(), "end": end_dt.isoformat(), "color": "#FF6347" if (start_dt.time() >= time(22, 0) or end_dt.time() <= time(5, 0)) else "#1E90FF", "id": shift['id'], "allDay": False})
         
     col1, col2, col3 = st.columns([1, 6, 1])
     with col1:
         if st.button("先月"):
             st.session_state.calendar_date -= relativedelta(months=1)
-            st.session_state.clicked_date_str = None
             st.rerun()
     with col2:
         st.subheader(st.session_state.calendar_date.strftime('%Y年 %m月'), anchor=False, divider='blue')
     with col3:
         if st.button("来月"):
             st.session_state.calendar_date += relativedelta(months=1)
-            st.session_state.clicked_date_str = None
             st.rerun()
 
     calendar_result = calendar(events=events, options={"headerToolbar": False, "initialDate": st.session_state.calendar_date.isoformat(), "initialView": "dayGridMonth", "locale": "ja", "selectable": True, "height": "auto"}, custom_css=".fc-event-title { font-weight: 700; }\n.fc-toolbar-title { font-size: 1.5rem; }\n.fc-view-harness { height: 650px !important; }", key=f"calendar_{st.session_state.calendar_date}")
@@ -395,76 +388,72 @@ def show_shift_management_page():
         clicked_date = None
         if 'dateClick' in calendar_result:
             utc_dt = datetime.fromisoformat(calendar_result['dateClick']['date'].replace('Z', '+00:00'))
-            clicked_date = utc_dt.astimezone(JST).date()
+            clicked_date = utc_dt.astimezone(timezone(timedelta(hours=9))).date()
         elif 'eventClick' in calendar_result:
             start_str = calendar_result['eventClick']['event']['start'].split('T')[0]
             clicked_date = date.fromisoformat(start_str)
+
         if clicked_date:
-            st.session_state.clicked_date_str = clicked_date.isoformat()
-            st.rerun()
+            if clicked_date < date.today():
+                st.warning("過去の日付のシフトは変更できません。")
+            else:
+                shift_edit_dialog(clicked_date)
     
     if st.session_state.clicked_date_str:
         edit_date = date.fromisoformat(st.session_state.clicked_date_str)
-        with st.container(border=True):
-            st.subheader(f"🗓️ {edit_date.strftime('%Y年%m月%d日')} のシフト登録・編集")
-            conn = get_db_connection()
-            existing_shift = conn.execute("SELECT id, start_datetime, end_datetime FROM shifts WHERE user_id = ? AND date(start_datetime) = ?", (st.session_state.user_id, edit_date.isoformat())).fetchone()
-            conn.close()
-            is_overnight = st.session_state.last_shift_start_time > st.session_state.last_shift_end_time
-            default_end_date = edit_date + timedelta(days=1) if is_overnight else edit_date
-            default_start = datetime.combine(edit_date, st.session_state.last_shift_start_time)
-            default_end = datetime.combine(default_end_date, st.session_state.last_shift_end_time)
-            if existing_shift:
-                default_start = datetime.fromisoformat(existing_shift['start_datetime'])
-                default_end = datetime.fromisoformat(existing_shift['end_datetime'])
-            with st.form(key=f"shift_form_{edit_date.isoformat()}"):
-                c1, c2 = st.columns(2)
-                with c1:
-                    start_date_input = st.date_input("出勤日", value=default_start.date())
-                    end_date_input = st.date_input("退勤日", value=default_end.date())
-                with c2:
-                    start_time_input = st.time_input("出勤時刻", value=default_start.time())
-                    end_time_input = st.time_input("退勤時刻", value=default_end.time())
+        if edit_date < date.today():
+            st.warning("過去の日付のシフトは変更できません。")
+        else:
+            with st.container(border=True):
+                st.subheader(f"🗓️ {edit_date.strftime('%Y年%m月%d日')} のシフト登録・編集")
                 
-                # ★★★ IndentationErrorの修正箇所 ★★★
-                # タイムゾーン情報のないnaiveなdatetimeを作成
-                naive_start_dt = datetime.combine(start_date_input, start_time_input)
-                naive_end_dt = datetime.combine(end_date_input, end_time_input)
-                
-                # JSTのタイムゾーン情報を付与してawareなdatetimeに変換
-                start_datetime = naive_start_dt.replace(tzinfo=JST)
-                end_datetime = naive_end_dt.replace(tzinfo=JST)
-                
-                c1, c2 = st.columns(2)
-                with c1:
-                    if st.form_submit_button("登録・更新", use_container_width=True, type="primary"):
-                        if start_datetime >= end_datetime:
-                            st.error("出勤日時は退勤日時より前に設定してください。")
-                        else:
-                            conn = get_db_connection()
-                            if existing_shift:
-                                conn.execute('UPDATE shifts SET start_datetime = ?, end_datetime = ? WHERE id = ?', (start_datetime.isoformat(), end_datetime.isoformat(), existing_shift['id']))
+                conn = get_db_connection()
+                existing_shift = conn.execute("SELECT id, start_datetime, end_datetime FROM shifts WHERE user_id = ? AND date(start_datetime) = ?", (st.session_state.user_id, edit_date.isoformat())).fetchone()
+                conn.close()
+
+                default_start = datetime.combine(edit_date, st.session_state.last_shift_start_time)
+                default_end = datetime.combine(edit_date, st.session_state.last_shift_end_time)
+                if existing_shift:
+                    default_start = datetime.fromisoformat(existing_shift['start_datetime'])
+                    default_end = datetime.fromisoformat(existing_shift['end_datetime'])
+                    
+                with st.form(key=f"shift_form_{edit_date.isoformat()}"):
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        start_date_input = st.date_input("出勤日", value=default_start.date())
+                        end_date_input = st.date_input("退勤日", value=default_end.date())
+                    with c2:
+                        start_time_input = st.time_input("出勤時刻", value=default_start.time())
+                        end_time_input = st.time_input("退勤時刻", value=default_end.time())
+                    start_datetime = datetime.combine(start_date_input, start_time_input)
+                    end_datetime = datetime.combine(end_date_input, end_time_input)
+                    
+                    # ★★★ 修正点: 「閉じる」ボタンを削除し、2列レイアウトに変更 ★★★
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        if st.form_submit_button("登録・更新", use_container_width=True, type="primary"):
+                            if start_datetime >= end_datetime:
+                                st.error("出勤日時は退勤日時より前に設定してください。")
                             else:
-                                conn.execute('INSERT INTO shifts (user_id, start_datetime, end_datetime) VALUES (?, ?, ?)', (st.session_state.user_id, start_datetime.isoformat(), end_datetime.isoformat()))
-                            conn.commit()
-                            conn.close()
-                            st.session_state.last_shift_start_time = start_datetime.time()
-                            st.session_state.last_shift_end_time = end_datetime.time()
-                            st.success("✅ シフトを保存しました！")
-                            py_time.sleep(1)
-                            st.session_state.clicked_date_str = None
-                            st.rerun()
-                with c2:
-                    if st.form_submit_button("削除", use_container_width=True):
-                        if existing_shift:
-                            conn = get_db_connection()
-                            conn.execute('DELETE FROM shifts WHERE id = ?', (existing_shift['id'],))
-                            conn.commit()
-                            conn.close()
-                            st.success("🗑️ シフトを削除しました。")
-                            py_time.sleep(1)
-                        st.session_state.clicked_date_str = None
-                        st.rerun()
+                                # モーダル表示のための情報をセット
+                                st.session_state.shift_confirmation_action = 'save'
+                                st.session_state.shift_confirmation_details = {
+                                    'start_datetime': start_datetime,
+                                    'end_datetime': end_datetime,
+                                    'existing_shift_id': existing_shift['id'] if existing_shift else None
+                                }
+                                st.rerun()
+                    with c2:
+                        if st.form_submit_button("削除", use_container_width=True):
+                            if existing_shift:
+                                # モーダル表示のための情報をセット
+                                st.session_state.shift_confirmation_action = 'delete'
+                                st.session_state.shift_confirmation_details = {
+                                    'existing_shift_id': existing_shift['id']
+                                }
+                                st.rerun()
+                            else:
+                                st.toast("削除するシフトがありません。", icon="🤷")
 
 def show_shift_table_page():
     st.header("月間シフト表")
@@ -541,10 +530,16 @@ def show_messages_page():
 def show_user_info_page():
     st.header("ユーザー情報")
     conn = get_db_connection()
-    user_data = conn.execute('SELECT name, employee_id, created_at, password_hash FROM users WHERE id = ?', (st.session_state.user_id,)).fetchone()
+    ### 変更点 ###
+    # SELECT文にcompanyとpositionを追加
+    user_data = conn.execute('SELECT name, employee_id, created_at, password_hash, company, position FROM users WHERE id = ?', (st.session_state.user_id,)).fetchone()
     conn.close()
     if user_data:
         st.text_input("名前", value=user_data['name'], disabled=True)
+        ### 変更点 ###
+        # 会社名と役職を表示。get()を使い、古いデータでエラーが出ないように配慮
+        st.text_input("会社名", value=user_data.get('company', '未登録'), disabled=True)
+        st.text_input("役職", value=user_data.get('position', '未登録'), disabled=True)
         st.text_input("従業員ID", value=user_data['employee_id'], disabled=True)
         created_dt = datetime.fromisoformat(user_data['created_at'])
         st.text_input("登録日時", value=created_dt.strftime('%Y年%m月%d日 %H:%M:%S'), disabled=True)
