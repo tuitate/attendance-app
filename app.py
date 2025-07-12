@@ -11,7 +11,7 @@ from dateutil.relativedelta import relativedelta
 from streamlit_autorefresh import st_autorefresh
 import re
 
-from database import get_db_connection
+from database import get_db_connection, update_db_schema
 
 # --- Helper Functions ---
 def hash_password(password):
@@ -91,18 +91,12 @@ def get_user(employee_id):
     conn.close()
     return user
 
-### 変更点 ###
-# register_user関数にcompanyとposition引数を追加
 def register_user(name, employee_id, password, company, position):
     """新規ユーザーを登録"""
     conn = get_db_connection()
     hashed_password = hash_password(password)
     now = get_jst_now().isoformat()
     try:
-        # ### 変更点 ###
-        # データベースのusersテーブルにcompanyとpositionを保存するようにINSERT文を修正
-        # 事前に `ALTER TABLE users ADD COLUMN company TEXT;` と
-        # `ALTER TABLE users ADD COLUMN position TEXT;` を実行してテーブル構造を変更しておく必要があります。
         conn.execute('INSERT INTO users (name, employee_id, password_hash, created_at, company, position) VALUES (?, ?, ?, ?, ?, ?)',
                      (name, employee_id, hashed_password, now, company, position))
         conn.commit()
@@ -154,7 +148,6 @@ def get_user_employee_id(user_id):
     conn.close()
     return employee_id_row['employee_id'] if employee_id_row else "N/A"
 
-# ★★★ ここからが今回の主要な修正箇所です ★★★
 @st.dialog("シフト登録・編集")
 def shift_edit_dialog(target_date):
     """シフトを編集するためのポップアップダイアログ"""
@@ -248,10 +241,7 @@ def show_login_register_page():
         with st.form("register_form"):
             st.markdown("パスワードは、大文字、小文字、数字を含む8文字以上で設定してください。")
             new_name = st.text_input("名前")
-            ### 変更点 ###
-            # 会社名入力欄を追加
             new_company = st.text_input("会社名")
-            # 役職選択ラジオボタンを追加
             new_position = st.radio("役職", ("社長", "役職者", "社員", "バイト"), horizontal=True)
             new_employee_id = st.text_input("従業員ID")
             new_password = st.text_input("パスワード", type="password")
@@ -259,8 +249,6 @@ def show_login_register_page():
             submitted = st.form_submit_button("登録してログイン")
             if submitted:
                 password_errors = validate_password(new_password)
-                ### 変更点 ###
-                # 必須項目チェックに会社名を追加
                 if not (new_name and new_company and new_employee_id and new_password):
                     st.warning("名前、会社名、従業員ID、パスワードは必須項目です。")
                 elif not new_employee_id.isdigit():
@@ -271,8 +259,6 @@ def show_login_register_page():
                     error_message = "パスワードは以下の要件を満たす必要があります：\n" + "\n".join(password_errors)
                     st.error(error_message)
                 else:
-                    ### 変更点 ###
-                    # register_user関数に新しい引数を渡す
                     if register_user(new_name, new_employee_id, new_password, new_company, new_position):
                         st.success("登録が完了しました。")
                         user = get_user(new_employee_id)
@@ -428,14 +414,12 @@ def show_shift_management_page():
                     start_datetime = datetime.combine(start_date_input, start_time_input)
                     end_datetime = datetime.combine(end_date_input, end_time_input)
                     
-                    # ★★★ 修正点: 「閉じる」ボタンを削除し、2列レイアウトに変更 ★★★
                     c1, c2 = st.columns(2)
                     with c1:
                         if st.form_submit_button("登録・更新", use_container_width=True, type="primary"):
                             if start_datetime >= end_datetime:
                                 st.error("出勤日時は退勤日時より前に設定してください。")
                             else:
-                                # モーダル表示のための情報をセット
                                 st.session_state.shift_confirmation_action = 'save'
                                 st.session_state.shift_confirmation_details = {
                                     'start_datetime': start_datetime,
@@ -446,7 +430,6 @@ def show_shift_management_page():
                     with c2:
                         if st.form_submit_button("削除", use_container_width=True):
                             if existing_shift:
-                                # モーダル表示のための情報をセット
                                 st.session_state.shift_confirmation_action = 'delete'
                                 st.session_state.shift_confirmation_details = {
                                     'existing_shift_id': existing_shift['id']
@@ -530,14 +513,10 @@ def show_messages_page():
 def show_user_info_page():
     st.header("ユーザー情報")
     conn = get_db_connection()
-    ### 変更点 ###
-    # SELECT文にcompanyとpositionを追加
     user_data = conn.execute('SELECT name, employee_id, created_at, password_hash, company, position FROM users WHERE id = ?', (st.session_state.user_id,)).fetchone()
     conn.close()
     if user_data:
         st.text_input("名前", value=user_data['name'], disabled=True)
-        ### 変更点 ###
-        # 会社名と役職を表示。get()を使い、古いデータでエラーが出ないように配慮
         st.text_input("会社名", value=user_data.get('company', '未登録'), disabled=True)
         st.text_input("役職", value=user_data.get('position', '未登録'), disabled=True)
         st.text_input("従業員ID", value=user_data['employee_id'], disabled=True)
@@ -727,7 +706,6 @@ def display_work_summary():
                 now = get_jst_now()
                 
                 if st.session_state.last_break_reminder_date != today_str:
-                    # ★★★ 修正点: タイムゾーンを合わせて比較 ★★★
                     if now.astimezone(JST) >= reminder_time.astimezone(JST) and now.astimezone(JST) < break_start_estimate_dt.astimezone(JST):
                         add_message(st.session_state.user_id, "⏰ まもなく休憩の時間です。準備をしてください。")
                         st.session_state.last_break_reminder_date = today_str
@@ -777,6 +755,11 @@ def display_work_summary():
 def main():
     """メインのアプリケーションロジック"""
     st.set_page_config(layout="wide")
+    
+    # ### 変更点 ###
+    # アプリ起動時にデータベースのスキーマを更新する
+    update_db_schema()
+    
     init_session_state()
     
     if not st.session_state.get('logged_in'):
@@ -823,6 +806,8 @@ def main():
         elif page_to_show == "シフト管理":
             show_shift_management_page()
         elif page_to_show == "シフト表":
+            # ### 変更点 ###
+            # `how_shift_table_page`から`show_shift_table_page`に修正
             show_shift_table_page()
         elif page_to_show == "出勤状況":
             show_work_status_page()
