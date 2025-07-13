@@ -11,7 +11,9 @@ from dateutil.relativedelta import relativedelta
 from streamlit_autorefresh import st_autorefresh
 import re
 
-from database import get_db_connection, update_db_schema
+### 変更点 ###
+# update_db_schema の代わりに init_db をインポート
+from database import get_db_connection, init_db
 
 # --- Helper Functions ---
 def hash_password(password):
@@ -68,8 +70,6 @@ def init_session_state():
         'logged_in': False,
         'user_id': None,
         'user_name': None,
-        ### 変更点 ###
-        # セッションに会社と役職情報を追加
         'user_company': None,
         'user_position': None,
         'work_status': "not_started",
@@ -237,8 +237,6 @@ def show_login_register_page():
                         st.session_state.logged_in = True
                         st.session_state.user_id = user['id']
                         st.session_state.user_name = user['name']
-                        ### 変更点 ###
-                        # ログイン時に会社と役職情報をセッションに保存
                         st.session_state.user_company = user['company']
                         st.session_state.user_position = user['position']
                         get_today_attendance_status(user['id'])
@@ -274,8 +272,6 @@ def show_login_register_page():
                             st.session_state.logged_in = True
                             st.session_state.user_id = user['id']
                             st.session_state.user_name = user['name']
-                            ### 変更点 ###
-                            # 登録後ログイン時にもセッションに保存
                             st.session_state.user_company = user['company']
                             st.session_state.user_position = user['position']
                             get_today_attendance_status(user['id'])
@@ -529,8 +525,6 @@ def show_user_info_page():
     conn.close()
     if user_data:
         st.text_input("名前", value=user_data['name'], disabled=True)
-        ### 変更点 ###
-        # .get()メソッドを使わずにキーでアクセスするように修正
         st.text_input("会社名", value=user_data['company'] or '未登録', disabled=True)
         st.text_input("役職", value=user_data['position'] or '未登録', disabled=True)
         st.text_input("従業員ID", value=user_data['employee_id'], disabled=True)
@@ -562,19 +556,15 @@ def show_user_info_page():
                         else:
                             st.error("パスワードの変更中にエラーが発生しました。")
 
-### 変更点 ###
-# 新しいユーザーを登録するためのページ表示関数を追加
 def show_user_registration_page():
     """管理者（社長・役職者）が新しいユーザーを登録するためのページ"""
     st.header("ユーザー登録")
     st.info("あなたの会社に新しいユーザーを登録します。")
 
     with st.form("user_registration_form"):
-        # 会社名はログインユーザーのものを自動入力し、編集不可にする
         company_name = st.text_input("会社名", value=st.session_state.user_company, disabled=True)
         
         new_name = st.text_input("名前")
-        # 登録できる役職を限定
         new_position = st.radio("役職", ("役職者", "社員", "バイト"), horizontal=True)
         new_employee_id = st.text_input("従業員ID")
         
@@ -597,10 +587,8 @@ def show_user_registration_page():
                 error_message = "パスワードは以下の要件を満たす必要があります：\n" + "\n".join(password_errors)
                 st.error(error_message)
             else:
-                # register_user関数を呼び出し
                 if register_user(new_name, new_employee_id, new_password, company_name, new_position):
                     st.success(f"ユーザー「{new_name}」さんを登録しました。")
-                    # 登録成功後、入力フォームをクリアするために再実行
                     py_time.sleep(2)
                     st.rerun()
                 else:
@@ -815,7 +803,10 @@ def main():
     """メインのアプリケーションロジック"""
     st.set_page_config(layout="wide")
     
-    update_db_schema()
+    ### 変更点 ###
+    # `update_db_schema()` を `init_db()` に変更
+    # これにより、アプリ起動時に必ずテーブルの存在確認・作成・更新が行われる
+    init_db()
     
     init_session_state()
     
@@ -836,13 +827,10 @@ def main():
             
         page_options = ["タイムカード", "シフト管理", "シフト表", "出勤状況", message_label, "ユーザー情報"]
         
-        ### 変更点 ###
-        # 役職に応じて「ユーザー登録」ページをメニューに追加
         if st.session_state.user_position in ["社長", "役職者"]:
-            page_options.insert(1, "ユーザー登録") # タイムカードの次に追加
+            page_options.insert(1, "ユーザー登録")
 
         try:
-            # st.session_state.pageが新しいページリストにない場合のエラーを防ぐ
             if st.session_state.page not in page_options:
                 st.session_state.page = "タイムカード"
             current_page_index = page_options.index(st.session_state.page)
@@ -856,7 +844,6 @@ def main():
              st.rerun()
 
         if st.sidebar.button("ログアウト"):
-            # セッションステートをクリア
             for key in st.session_state.keys():
                 del st.session_state[key]
             st.rerun()
@@ -865,8 +852,6 @@ def main():
         
         if page_to_show == "タイムカード":
             show_timecard_page()
-        ### 変更点 ###
-        # 「ユーザー登録」ページの呼び出しを追加
         elif page_to_show == "ユーザー登録":
             show_user_registration_page()
         elif page_to_show == "シフト管理":
