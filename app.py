@@ -1,4 +1,3 @@
-# app.py
 import streamlit as st
 import pandas as pd
 from datetime import datetime, date, time, timezone, timedelta
@@ -11,8 +10,6 @@ from dateutil.relativedelta import relativedelta
 from streamlit_autorefresh import st_autorefresh
 import re
 
-### 変更点 ###
-# update_db_schema の代わりに init_db をインポート
 from database import get_db_connection, init_db
 
 # --- Helper Functions ---
@@ -248,7 +245,9 @@ def show_login_register_page():
             st.markdown("パスワードは、大文字、小文字、数字を含む8文字以上で設定してください。")
             new_name = st.text_input("名前")
             new_company = st.text_input("会社名")
-            new_position = st.radio("役職", ("社長", "役職者", "社員", "バイト"), horizontal=True)
+            ### 変更点 ###
+            # 新規登録時の役職を「社長」と「役職者」に限定
+            new_position = st.radio("役職", ("社長", "役職者"), horizontal=True)
             new_employee_id = st.text_input("従業員ID")
             new_password = st.text_input("パスワード", type="password")
             confirm_password = st.text_input("パスワード（確認用）", type="password")
