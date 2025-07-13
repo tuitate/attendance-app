@@ -68,6 +68,10 @@ def init_session_state():
         'logged_in': False,
         'user_id': None,
         'user_name': None,
+        ### 変更点 ###
+        # セッションに会社と役職情報を追加
+        'user_company': None,
+        'user_position': None,
         'work_status': "not_started",
         'attendance_id': None,
         'break_id': None,
@@ -233,6 +237,10 @@ def show_login_register_page():
                         st.session_state.logged_in = True
                         st.session_state.user_id = user['id']
                         st.session_state.user_name = user['name']
+                        ### 変更点 ###
+                        # ログイン時に会社と役職情報をセッションに保存
+                        st.session_state.user_company = user['company']
+                        st.session_state.user_position = user['position']
                         get_today_attendance_status(user['id'])
                         st.rerun()
                     else:
@@ -266,6 +274,10 @@ def show_login_register_page():
                             st.session_state.logged_in = True
                             st.session_state.user_id = user['id']
                             st.session_state.user_name = user['name']
+                            ### 変更点 ###
+                            # 登録後ログイン時にもセッションに保存
+                            st.session_state.user_company = user['company']
+                            st.session_state.user_position = user['position']
                             get_today_attendance_status(user['id'])
                             st.rerun()
                     else:
@@ -517,8 +529,10 @@ def show_user_info_page():
     conn.close()
     if user_data:
         st.text_input("名前", value=user_data['name'], disabled=True)
-        st.text_input("会社名", value=user_data.get('company', '未登録'), disabled=True)
-        st.text_input("役職", value=user_data.get('position', '未登録'), disabled=True)
+        ### 変更点 ###
+        # .get()メソッドを使わずにキーでアクセスするように修正
+        st.text_input("会社名", value=user_data['company'] or '未登録', disabled=True)
+        st.text_input("役職", value=user_data['position'] or '未登録', disabled=True)
         st.text_input("従業員ID", value=user_data['employee_id'], disabled=True)
         created_dt = datetime.fromisoformat(user_data['created_at'])
         st.text_input("登録日時", value=created_dt.strftime('%Y年%m月%d日 %H:%M:%S'), disabled=True)
@@ -547,6 +561,51 @@ def show_user_info_page():
                             add_message(st.session_state.user_id, "🔒 パスワードが変更されました。")
                         else:
                             st.error("パスワードの変更中にエラーが発生しました。")
+
+### 変更点 ###
+# 新しいユーザーを登録するためのページ表示関数を追加
+def show_user_registration_page():
+    """管理者（社長・役職者）が新しいユーザーを登録するためのページ"""
+    st.header("ユーザー登録")
+    st.info("あなたの会社に新しいユーザーを登録します。")
+
+    with st.form("user_registration_form"):
+        # 会社名はログインユーザーのものを自動入力し、編集不可にする
+        company_name = st.text_input("会社名", value=st.session_state.user_company, disabled=True)
+        
+        new_name = st.text_input("名前")
+        # 登録できる役職を限定
+        new_position = st.radio("役職", ("役職者", "社員", "バイト"), horizontal=True)
+        new_employee_id = st.text_input("従業員ID")
+        
+        st.markdown("---")
+        st.markdown("パスワードは、大文字、小文字、数字を含む8文字以上で設定してください。")
+        new_password = st.text_input("初期パスワード", type="password")
+        confirm_password = st.text_input("初期パスワード（確認用）", type="password")
+        
+        submitted = st.form_submit_button("この内容で登録する")
+        
+        if submitted:
+            password_errors = validate_password(new_password)
+            if not (new_name and new_employee_id and new_password):
+                st.warning("名前、従業員ID、パスワードは必須項目です。")
+            elif not new_employee_id.isdigit():
+                st.error("従業員IDは数字で入力してください。")
+            elif new_password != confirm_password:
+                st.error("パスワードが一致しません。")
+            elif password_errors:
+                error_message = "パスワードは以下の要件を満たす必要があります：\n" + "\n".join(password_errors)
+                st.error(error_message)
+            else:
+                # register_user関数を呼び出し
+                if register_user(new_name, new_employee_id, new_password, company_name, new_position):
+                    st.success(f"ユーザー「{new_name}」さんを登録しました。")
+                    # 登録成功後、入力フォームをクリアするために再実行
+                    py_time.sleep(2)
+                    st.rerun()
+                else:
+                    st.error("その従業員IDは既に使用されています。")
+
 
 def show_work_status_page():
     st.header("出勤状況")
@@ -756,8 +815,6 @@ def main():
     """メインのアプリケーションロジック"""
     st.set_page_config(layout="wide")
     
-    # ### 変更点 ###
-    # アプリ起動時にデータベースのスキーマを更新する
     update_db_schema()
     
     init_session_state()
@@ -779,7 +836,15 @@ def main():
             
         page_options = ["タイムカード", "シフト管理", "シフト表", "出勤状況", message_label, "ユーザー情報"]
         
+        ### 変更点 ###
+        # 役職に応じて「ユーザー登録」ページをメニューに追加
+        if st.session_state.user_position in ["社長", "役職者"]:
+            page_options.insert(1, "ユーザー登録") # タイムカードの次に追加
+
         try:
+            # st.session_state.pageが新しいページリストにない場合のエラーを防ぐ
+            if st.session_state.page not in page_options:
+                st.session_state.page = "タイムカード"
             current_page_index = page_options.index(st.session_state.page)
         except ValueError:
             current_page_index = 0
@@ -791,23 +856,22 @@ def main():
              st.rerun()
 
         if st.sidebar.button("ログアウト"):
-            # ログイン状態に関するキーだけをリセットする
-            st.session_state.logged_in = False
-            st.session_state.user_id = None
-            st.session_state.user_name = None
-            # pageをデフォルトに戻す
-            st.session_state.page = "タイムカード"
+            # セッションステートをクリア
+            for key in st.session_state.keys():
+                del st.session_state[key]
             st.rerun()
 
         page_to_show = st.session_state.get('page', "タイムカード")
         
         if page_to_show == "タイムカード":
             show_timecard_page()
+        ### 変更点 ###
+        # 「ユーザー登録」ページの呼び出しを追加
+        elif page_to_show == "ユーザー登録":
+            show_user_registration_page()
         elif page_to_show == "シフト管理":
             show_shift_management_page()
         elif page_to_show == "シフト表":
-            # ### 変更点 ###
-            # `how_shift_table_page`から`show_shift_table_page`に修正
             show_shift_table_page()
         elif page_to_show == "出勤状況":
             show_work_status_page()
