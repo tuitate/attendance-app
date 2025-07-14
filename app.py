@@ -36,7 +36,6 @@ def add_broadcast_message(content, company_name):
     """メッセージを同じ会社のすべてのユーザーに一斉送信する"""
     conn = get_db_connection()
     try:
-        # ### 修正点: 会社名で送信対象を絞り込む ###
         users_in_company = conn.execute('SELECT id FROM users WHERE company = ?', (company_name,)).fetchall()
         now = get_jst_now().isoformat()
         for user_row in users_in_company:
@@ -150,6 +149,24 @@ def get_user_employee_id(user_id):
     conn.close()
     return employee_id_row['employee_id'] if employee_id_row else "N/A"
 
+@st.dialog("全体メッセージを送信")
+def broadcast_message_dialog():
+    """管理者（社長・役職者）が全体メッセージを送信するためのダイアログ"""
+    st.subheader("全従業員へのメッセージ送信")
+    with st.form(key='broadcast_dialog_form'):
+        message_content = st.text_area("メッセージ内容を入力してください。", height=200)
+        submitted = st.form_submit_button("この内容で送信する")
+        if submitted:
+            if message_content:
+                sender_name = st.session_state.user_name
+                full_message = f"**【お知らせ】{sender_name}さんより**\n\n{message_content}"
+                add_broadcast_message(full_message, st.session_state.user_company)
+                st.toast("メッセージを送信しました！", icon="✅")
+                py_time.sleep(1)
+                st.rerun()
+            else:
+                st.warning("メッセージ内容を入力してください。")
+
 @st.dialog("シフト登録・編集")
 def shift_edit_dialog(target_date):
     """シフトを編集するためのポップアップダイアログ"""
@@ -200,7 +217,7 @@ def shift_edit_dialog(target_date):
                 st.session_state.last_shift_start_time = start_datetime.time()
                 st.session_state.last_shift_end_time = end_datetime.time()
                 st.toast("シフトを保存しました！", icon="✅")
-                py_time.sleep(1.5) # 1秒待ってから画面を更新
+                py_time.sleep(1.5)
                 st.session_state.clicked_date_str = None
                 st.rerun()
 
@@ -212,7 +229,7 @@ def shift_edit_dialog(target_date):
                 conn.commit()
                 conn.close()
                 st.toast("シフトを削除しました。", icon="🗑️")
-                py_time.sleep(1.5) # 1秒待ってから画面を更新
+                py_time.sleep(1.5)
                 st.session_state.clicked_date_str = None
             st.rerun()
 
@@ -505,7 +522,7 @@ def show_shift_table_page():
 
     position_icons = {
         "社長": "👑",
-        "役職者": "💪",
+        "役職者": "�",
         "社員": "👨‍💼",
         "バイト": "👦🏿"
     }
@@ -545,27 +562,10 @@ def show_shift_table_page():
 def show_messages_page():
     st.header("メッセージ")
 
-    # ### 変更点: 社長と役職者向けのメッセージ投稿フォームを追加 ###
-    if st.session_state.user_position in ["社長", "役職者"]:
-        st.subheader("全従業員へのメッセージ送信")
-        with st.form("broadcast_form"):
-            message_content = st.text_area("メッセージ内容を入力してください。")
-            submitted = st.form_submit_button("送信")
-            if submitted:
-                if message_content:
-                    sender_name = st.session_state.user_name
-                    # 送信者名をメッセージに含める
-                    full_message = f"**【お知らせ】{sender_name}さんより**\n\n{message_content}"
-                    add_broadcast_message(full_message, st.session_state.user_company)
-                    st.success("メッセージを送信しました。")
-                    py_time.sleep(1)
-                    st.rerun()
-                else:
-                    st.warning("メッセージ内容を入力してください。")
-        st.divider()
-
+    # --- 受信メッセージ表示 ---
     conn = get_db_connection()
     messages = conn.execute('SELECT content, created_at FROM messages WHERE user_id = ? ORDER BY created_at DESC', (st.session_state.user_id,)).fetchall()
+    
     if not messages:
         st.info("新しいメッセージはありません。")
     else:
@@ -573,9 +573,20 @@ def show_messages_page():
             content = msg['content']
             created_at = datetime.fromisoformat(msg['created_at']).strftime('%Y年%m月%d日 %H:%M')
             st.container(border=True).markdown(f"**{created_at}**\n\n{content}")
+    
     conn.execute('UPDATE messages SET is_read = 1 WHERE user_id = ?', (st.session_state.user_id,))
     conn.commit()
     conn.close()
+    
+    st.divider()
+
+    # --- メッセージ投稿ボタン (管理者のみ) ---
+    if st.session_state.user_position in ["社長", "役職者"]:
+        _, col2 = st.columns([0.6, 0.4])
+        with col2:
+            if st.button("📝 全社へメッセージを送信する", use_container_width=True, type="primary"):
+                broadcast_message_dialog()
+
 
 def show_user_info_page():
     st.header("ユーザー情報")
@@ -717,7 +728,6 @@ def record_clock_in():
     st.session_state.attendance_id = cursor.lastrowid
     st.session_state.work_status = "working"
     conn.close()
-    # ### 修正点: 会社名を引数で渡す ###
     add_broadcast_message(f"✅ {st.session_state.user_name}さん、出勤しました。（{now.strftime('%H:%M')}）", st.session_state.user_company)
 
 def record_clock_out():
@@ -734,7 +744,6 @@ def record_clock_out():
     for br in breaks:
         if br['break_start'] and br['break_end']:
             total_break_seconds += (datetime.fromisoformat(br['break_end']) - datetime.fromisoformat(br['break_start'])).total_seconds()
-    # ### 修正点: 会社名を引数で渡す ###
     add_broadcast_message(f"🌙 {st.session_state.user_name}さん、退勤しました。（{now.strftime('%H:%M')}）", st.session_state.user_company)
     if total_work_seconds > 8 * 3600 and total_break_seconds < 60 * 60:
         add_message(st.session_state.user_id, "⚠️ **警告:** 8時間以上の勤務に対し、休憩が60分未満です。法律に基づき、適切な休憩時間を確保してください。")
