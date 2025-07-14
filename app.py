@@ -32,13 +32,14 @@ def add_message(user_id, content):
     conn.commit()
     conn.close()
 
-def add_broadcast_message(content):
-    """メッセージをすべてのユーザーに一斉送信する"""
+def add_broadcast_message(content, company_name):
+    """メッセージを同じ会社のすべてのユーザーに一斉送信する"""
     conn = get_db_connection()
     try:
-        all_user_ids = conn.execute('SELECT id FROM users').fetchall()
+        # ### 修正点: 会社名で送信対象を絞り込む ###
+        users_in_company = conn.execute('SELECT id FROM users WHERE company = ?', (company_name,)).fetchall()
         now = get_jst_now().isoformat()
-        for user_row in all_user_ids:
+        for user_row in users_in_company:
             conn.execute('INSERT INTO messages (user_id, content, created_at) VALUES (?, ?, ?)',
                          (user_row['id'], content, now))
         conn.commit()
@@ -245,8 +246,6 @@ def show_login_register_page():
             st.markdown("パスワードは、大文字、小文字、数字を含む8文字以上で設定してください。")
             new_name = st.text_input("名前")
             new_company = st.text_input("会社名")
-            ### 変更点 ###
-            # 新規登録時の役職を「社長」と「役職者」に限定
             new_position = st.radio("役職", ("社長", "役職者"), horizontal=True)
             new_employee_id = st.text_input("従業員ID")
             new_password = st.text_input("パスワード", type="password")
@@ -458,6 +457,7 @@ def show_shift_table_page():
         if st.button("来月", key="table_next"):
             st.session_state.calendar_date += relativedelta(months=1)
             st.rerun()
+            
     selected_date = st.session_state.calendar_date
     desired_width_pixels = 100
     css = f"""
@@ -469,29 +469,67 @@ def show_shift_table_page():
     </style>
     """
     st.markdown(css, unsafe_allow_html=True)
+    
     first_day = selected_date.replace(day=1)
     last_day = first_day.replace(day=py_calendar.monthrange(first_day.year, first_day.month)[1])
+    
     conn = get_db_connection()
-    users = pd.read_sql_query('SELECT id, name, employee_id FROM users ORDER BY id', conn)
-    shifts_query = "SELECT user_id, start_datetime, end_datetime FROM shifts WHERE date(start_datetime) BETWEEN ? AND ?"
-    shifts = pd.read_sql_query(shifts_query, conn, params=(first_day.isoformat(), last_day.isoformat()))
-    conn.close()
+    company_name = st.session_state.user_company
+
+    users_query = """
+        SELECT id, name, position 
+        FROM users 
+        WHERE company = ? 
+        ORDER BY 
+            CASE position 
+                WHEN '社長' THEN 1 
+                WHEN '役職者' THEN 2 
+                WHEN '社員' THEN 3 
+                WHEN 'バイト' THEN 4 
+                ELSE 5 
+            END, id
+    """
+    users = pd.read_sql_query(users_query, conn, params=(company_name,))
+    
     if users.empty:
-        st.info("登録されている従業員がいません。")
+        st.info("あなたの会社には、まだ従業員が登録されていません。")
+        conn.close()
         return
-    users_for_table = users.drop_duplicates(subset=['name'], keep='first')
-    df = pd.DataFrame(index=users_for_table['name'])
+        
+    user_ids_in_company = tuple(users['id'].tolist())
+    placeholders = ','.join('?' for _ in user_ids_in_company)
+    shifts_query = f"SELECT user_id, start_datetime, end_datetime FROM shifts WHERE user_id IN ({placeholders}) AND date(start_datetime) BETWEEN ? AND ?"
+    params = user_ids_in_company + (first_day.isoformat(), last_day.isoformat())
+    shifts = pd.read_sql_query(shifts_query, conn, params=params)
+    conn.close()
+
+    position_icons = {
+        "社長": "👑",
+        "役職者": "💪",
+        "社員": "👨‍💼",
+        "バイト": "👦🏿"
+    }
+
+    users['display_name'] = users.apply(
+        lambda row: f"{position_icons.get(row['position'], '')} {row['name']}",
+        axis=1
+    )
+
+    df = pd.DataFrame(index=users['display_name'])
     df.index.name = "従業員名"
+
     date_range = pd.to_datetime(pd.date_range(start=first_day, end=last_day))
     for d in date_range:
         day_str = d.strftime('%d')
         weekday_str = ['月', '火', '水', '木', '金', '土', '日'][d.weekday()]
         col_name = f"{day_str} ({weekday_str})"
         df[col_name] = ""
-    user_id_to_name = pd.Series(users.name.values, index=users.id).to_dict()
+
+    user_id_to_display_name = pd.Series(users.display_name.values, index=users.id).to_dict()
+    
     for _, row in shifts.iterrows():
-        employee_name = user_id_to_name.get(row['user_id'])
-        if employee_name and employee_name in df.index:
+        employee_display_name = user_id_to_display_name.get(row['user_id'])
+        if employee_display_name and employee_display_name in df.index:
             start_dt = datetime.fromisoformat(row['start_datetime'])
             end_dt = datetime.fromisoformat(row['end_datetime'])
             day_str = start_dt.strftime('%d')
@@ -499,11 +537,33 @@ def show_shift_table_page():
             col_name = f"{day_str} ({weekday_str})"
             start_t = start_dt.strftime('%H:%M')
             end_t = end_dt.strftime('%m/%d %H:%M') if start_dt.date() != end_dt.date() else end_dt.strftime('%H:%M')
-            df.at[employee_name, col_name] = f"{start_t}～{end_t}"
+            df.at[employee_display_name, col_name] = f"{start_t}～{end_t}"
+
     st.dataframe(df, use_container_width=True)
+
 
 def show_messages_page():
     st.header("メッセージ")
+
+    # ### 変更点: 社長と役職者向けのメッセージ投稿フォームを追加 ###
+    if st.session_state.user_position in ["社長", "役職者"]:
+        st.subheader("全従業員へのメッセージ送信")
+        with st.form("broadcast_form"):
+            message_content = st.text_area("メッセージ内容を入力してください。")
+            submitted = st.form_submit_button("送信")
+            if submitted:
+                if message_content:
+                    sender_name = st.session_state.user_name
+                    # 送信者名をメッセージに含める
+                    full_message = f"**【お知らせ】{sender_name}さんより**\n\n{message_content}"
+                    add_broadcast_message(full_message, st.session_state.user_company)
+                    st.success("メッセージを送信しました。")
+                    py_time.sleep(1)
+                    st.rerun()
+                else:
+                    st.warning("メッセージ内容を入力してください。")
+        st.divider()
+
     conn = get_db_connection()
     messages = conn.execute('SELECT content, created_at FROM messages WHERE user_id = ? ORDER BY created_at DESC', (st.session_state.user_id,)).fetchall()
     if not messages:
@@ -657,7 +717,8 @@ def record_clock_in():
     st.session_state.attendance_id = cursor.lastrowid
     st.session_state.work_status = "working"
     conn.close()
-    add_broadcast_message(f"✅ {st.session_state.user_name}さん、出勤しました。（{now.strftime('%H:%M')}）")
+    # ### 修正点: 会社名を引数で渡す ###
+    add_broadcast_message(f"✅ {st.session_state.user_name}さん、出勤しました。（{now.strftime('%H:%M')}）", st.session_state.user_company)
 
 def record_clock_out():
     conn = get_db_connection()
@@ -673,7 +734,8 @@ def record_clock_out():
     for br in breaks:
         if br['break_start'] and br['break_end']:
             total_break_seconds += (datetime.fromisoformat(br['break_end']) - datetime.fromisoformat(br['break_start'])).total_seconds()
-    add_broadcast_message(f"🌙 {st.session_state.user_name}さん、退勤しました。（{now.strftime('%H:%M')}）")
+    # ### 修正点: 会社名を引数で渡す ###
+    add_broadcast_message(f"🌙 {st.session_state.user_name}さん、退勤しました。（{now.strftime('%H:%M')}）", st.session_state.user_company)
     if total_work_seconds > 8 * 3600 and total_break_seconds < 60 * 60:
         add_message(st.session_state.user_id, "⚠️ **警告:** 8時間以上の勤務に対し、休憩が60分未満です。法律に基づき、適切な休憩時間を確保してください。")
     elif total_work_seconds > 6 * 3600 and total_break_seconds < 45 * 60:
@@ -802,9 +864,6 @@ def main():
     """メインのアプリケーションロジック"""
     st.set_page_config(layout="wide")
     
-    ### 変更点 ###
-    # `update_db_schema()` を `init_db()` に変更
-    # これにより、アプリ起動時に必ずテーブルの存在確認・作成・更新が行われる
     init_db()
     
     init_session_state()
@@ -866,4 +925,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
