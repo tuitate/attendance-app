@@ -600,7 +600,8 @@ def show_messages_page():
                 
                 # 画像データがあれば表示
                 if msg['image_base64']:
-                    st.image(msg['image_base64'])
+                    image_bytes = base64.b64decode(msg['image_base64'])
+                    st.image(image_bytes)
     
     conn.execute('UPDATE messages SET is_read = 1 WHERE user_id = ?', (st.session_state.user_id,))
     conn.commit()
