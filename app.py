@@ -9,7 +9,7 @@ from streamlit_calendar import calendar
 from dateutil.relativedelta import relativedelta
 from streamlit_autorefresh import st_autorefresh
 import re
-import base64 # 変更・追加： 画像のエンコードに必要
+import base64
 
 from database import get_db_connection, init_db
 
@@ -28,13 +28,11 @@ def add_message(user_id, content):
     """メッセージをデータベースに追加する"""
     conn = get_db_connection()
     now = get_jst_now().isoformat()
-    # 変更・追加： image_base64カラムを考慮
     conn.execute('INSERT INTO messages (user_id, content, created_at, image_base64) VALUES (?, ?, ?, ?)',
                  (user_id, content, now, None))
     conn.commit()
     conn.close()
 
-# 変更・追加： image_base64を引数に追加
 def add_broadcast_message(content, company_name, image_base64=None):
     """メッセージを同じ会社のすべてのユーザーに一斉送信する"""
     conn = get_db_connection()
@@ -42,7 +40,6 @@ def add_broadcast_message(content, company_name, image_base64=None):
         users_in_company = conn.execute('SELECT id FROM users WHERE company = ?', (company_name,)).fetchall()
         now = get_jst_now().isoformat()
         for user_row in users_in_company:
-            # 変更・追加： image_base64をINSERT文に追加
             conn.execute('INSERT INTO messages (user_id, content, created_at, image_base64) VALUES (?, ?, ?, ?)',
                          (user_row['id'], content, now, image_base64))
         conn.commit()
@@ -64,6 +61,7 @@ def delete_broadcast_message(created_at_iso):
     finally:
         conn.close()
 
+
 def validate_password(password):
     """パスワードが要件を満たしているか検証する"""
     errors = []
@@ -78,6 +76,7 @@ def validate_password(password):
     return errors
 
 # --- Session State Initialization ---
+# 変更・追加：削除確認用のセッションステートを追加
 def init_session_state():
     """セッションステートを初期化する"""
     defaults = {
@@ -96,6 +95,7 @@ def init_session_state():
         'clicked_date_str': None,
         'last_shift_start_time': time(9, 0),
         'last_shift_end_time': time(17, 0),
+        'confirming_delete_message_created_at': None, # 削除確認中のメッセージのタイムスタンプ
     }
     for key, default_value in defaults.items():
         if key not in st.session_state:
@@ -166,7 +166,6 @@ def get_user_employee_id(user_id):
     conn.close()
     return employee_id_row['employee_id'] if employee_id_row else "N/A"
 
-# 変更・追加：画像アップロード機能を追加
 @st.dialog("全体メッセージを送信")
 def broadcast_message_dialog():
     """管理者（社長・役職者）が全体メッセージを送信するためのダイアログ"""
@@ -174,23 +173,21 @@ def broadcast_message_dialog():
     with st.form(key='broadcast_dialog_form'):
         message_content = st.text_area("メッセージ内容を入力してください。", height=150)
         
-        # 画像アップローダーを追加
         uploaded_image = st.file_uploader("画像を添付 (任意)", type=["png", "jpg", "jpeg"])
         
         submitted = st.form_submit_button("この内容で送信する")
         if submitted:
             if message_content or uploaded_image:
                 sender_name = st.session_state.user_name
-                full_message = f"**【お知らせ】{sender_name}さんより**\n\n{message_content}"
+                # 送信者情報をメッセージ内容から分離
+                message_body = f"**【お知らせ】{sender_name}さんより**\n\n{message_content}"
                 
                 image_base64 = None
                 if uploaded_image is not None:
-                    # アップロードされた画像をBase64にエンコード
                     image_bytes = uploaded_image.getvalue()
                     image_base64 = base64.b64encode(image_bytes).decode()
 
-                # 画像データも一緒に送信
-                add_broadcast_message(full_message, st.session_state.user_company, image_base64)
+                add_broadcast_message(message_body, st.session_state.user_company, image_base64)
                 
                 st.toast("メッセージを送信しました！", icon="✅")
                 py_time.sleep(1)
@@ -590,11 +587,12 @@ def show_shift_table_page():
 
     st.dataframe(df, use_container_width=True)
 
+
+# 変更・追加：削除確認のロジックを全面的に追加
 def show_messages_page():
     st.header("メッセージ")
 
     conn = get_db_connection()
-    # idも取得するように変更
     messages = conn.execute('SELECT id, content, created_at, image_base64 FROM messages WHERE user_id = ? ORDER BY created_at DESC', (st.session_state.user_id,)).fetchall()
     
     if not messages:
@@ -602,30 +600,45 @@ def show_messages_page():
     else:
         for msg in messages:
             with st.container(border=True):
-                # タイムスタンプと削除ボタンを横並びにする
-                col1, col2 = st.columns([4, 1])
-                with col1:
-                    created_at_dt = datetime.fromisoformat(msg['created_at'])
-                    st.markdown(f"**{created_at_dt.strftime('%Y年%m月%d日 %H:%M')}**")
-                
-                with col2:
-                    # 管理者（社長・役職者）の場合のみ削除ボタンを表示
-                    if st.session_state.user_position in ["社長", "役職者"]:
-                        # is_personal_messageは、お知らせかどうかを判定する簡易的な方法
-                        is_personal_message = not msg['content'].startswith("**【お知らせ】")
-                        if not is_personal_message:
-                            if st.button("🗑️ 削除", key=f"delete_{msg['id']}", use_container_width=True):
-                                # タイムスタンプをキーに、全ユーザーからこのメッセージを削除
-                                delete_broadcast_message(msg['created_at'])
-                                st.toast("メッセージを削除しました。")
-                                st.rerun() # ページを再読み込みして表示を更新
-                
-                if msg['content']:
-                    st.markdown(msg['content'])
-                
-                if msg['image_base64']:
-                    image_bytes = base64.b64decode(msg['image_base64'])
-                    st.image(image_bytes)
+                # このメッセージが削除確認中かどうかをチェック
+                is_confirming_this_message = st.session_state.confirming_delete_message_created_at == msg['created_at']
+
+                if is_confirming_this_message:
+                    # ---- 削除確認の表示 ----
+                    st.warning("このメッセージを全ユーザーから削除します。よろしいですか？")
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        if st.button("はい、削除します", key=f"confirm_delete_{msg['id']}", type="primary", use_container_width=True):
+                            delete_broadcast_message(msg['created_at'])
+                            st.session_state.confirming_delete_message_created_at = None # 確認状態をリセット
+                            st.toast("メッセージを削除しました。")
+                            st.rerun()
+                    with c2:
+                        if st.button("いいえ", key=f"cancel_delete_{msg['id']}", use_container_width=True):
+                            st.session_state.confirming_delete_message_created_at = None # 確認状態をリセット
+                            st.rerun()
+                else:
+                    # ---- 通常のメッセージ表示 ----
+                    col1, col2 = st.columns([4, 1])
+                    with col1:
+                        created_at_dt = datetime.fromisoformat(msg['created_at'])
+                        st.markdown(f"**{created_at_dt.strftime('%Y年%m月%d日 %H:%M')}**")
+                    
+                    with col2:
+                        if st.session_state.user_position in ["社長", "役職者"]:
+                            is_personal_message = not msg['content'].startswith("**【お知らせ】")
+                            if not is_personal_message:
+                                if st.button("🗑️ 削除", key=f"delete_{msg['id']}", use_container_width=True):
+                                    # 確認状態に移行
+                                    st.session_state.confirming_delete_message_created_at = msg['created_at']
+                                    st.rerun()
+                    
+                    if msg['content']:
+                        st.markdown(msg['content'])
+                    
+                    if msg['image_base64']:
+                        image_bytes = base64.b64decode(msg['image_base64'])
+                        st.image(image_bytes)
     
     conn.execute('UPDATE messages SET is_read = 1 WHERE user_id = ?', (st.session_state.user_id,))
     conn.commit()
