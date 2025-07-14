@@ -493,7 +493,7 @@ def show_shift_table_page():
         if st.button("来月", key="table_next"):
             st.session_state.calendar_date += relativedelta(months=1)
             st.rerun()
-            
+
     selected_date = st.session_state.calendar_date
     desired_width_pixels = 100
     css = f"""
@@ -505,33 +505,33 @@ def show_shift_table_page():
     </style>
     """
     st.markdown(css, unsafe_allow_html=True)
-    
+
     first_day = selected_date.replace(day=1)
     last_day = first_day.replace(day=py_calendar.monthrange(first_day.year, first_day.month)[1])
-    
+
     conn = get_db_connection()
     company_name = st.session_state.user_company
 
     users_query = """
-        SELECT id, name, position 
-        FROM users 
-        WHERE company = ? 
-        ORDER BY 
-            CASE position 
-                WHEN '社長' THEN 1 
-                WHEN '役職者' THEN 2 
-                WHEN '社員' THEN 3 
-                WHEN 'バイト' THEN 4 
-                ELSE 5 
+        SELECT id, name, position
+        FROM users
+        WHERE company = ?
+        ORDER BY
+            CASE position
+                WHEN '社長' THEN 1
+                WHEN '役職者' THEN 2
+                WHEN '社員' THEN 3
+                WHEN 'バイト' THEN 4
+                ELSE 5
             END, id
     """
     users = pd.read_sql_query(users_query, conn, params=(company_name,))
-    
+
     if users.empty:
         st.info("あなたの会社には、まだ従業員が登録されていません。")
         conn.close()
         return
-        
+
     user_ids_in_company = tuple(users['id'].tolist())
     placeholders = ','.join('?' for _ in user_ids_in_company)
     shifts_query = f"SELECT user_id, start_datetime, end_datetime FROM shifts WHERE user_id IN ({placeholders}) AND date(start_datetime) BETWEEN ? AND ?"
@@ -562,7 +562,7 @@ def show_shift_table_page():
         df[col_name] = ""
 
     user_id_to_display_name = pd.Series(users.display_name.values, index=users.id).to_dict()
-    
+
     for _, row in shifts.iterrows():
         employee_display_name = user_id_to_display_name.get(row['user_id'])
         if employee_display_name and employee_display_name in df.index:
@@ -575,8 +575,30 @@ def show_shift_table_page():
             end_t = end_dt.strftime('%m/%d %H:%M') if start_dt.date() != end_dt.date() else end_dt.strftime('%H:%M')
             df.at[employee_display_name, col_name] = f"{start_t}～{end_t}"
 
-    st.dataframe(df, use_container_width=True)
+    # --- ここからハイライト処理 ---
+    # ログイン中のユーザーの表示名を作成
+    my_icon = position_icons.get(st.session_state.user_position, '')
+    my_display_name = f"{my_icon} {st.session_state.user_name}"
 
+    # 行をハイライトする関数
+    def highlight_user_row(row):
+        if row.name == my_display_name:
+            return ['background-color: #FFFFE0'] * len(row) # #FFFFE0 は薄い黄色
+        else:
+            return [''] * len(row)
+
+    # スタイルを適用して表示
+    st.dataframe(df.style.apply(highlight_user_row, axis=1), use_container_width=True)
+
+    # 行をハイライトする関数
+    def highlight_user_row(row):
+        if row.name == my_display_name:
+            return ['background-color: #FFFFE0'] * len(row) # #FFFFE0 は薄い黄色
+        else:
+            return [''] * len(row)
+
+    # スタイルを適用して表示
+    st.dataframe(df.style.apply(highlight_user_row, axis=1), use_container_width=True)
 
 def show_messages_page():
     st.header("メッセージ")
