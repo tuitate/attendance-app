@@ -487,7 +487,6 @@ def show_shift_management_page():
                             else:
                                 st.toast("削除するシフトがありません。", icon="🤷")
 
-# ▼▼▼▼▼ この関数全体を修正 ▼▼▼▼▼
 def show_shift_table_page():
     st.header("月間シフト表")
     col1, col2, col3 = st.columns([1, 6, 1])
@@ -588,18 +587,25 @@ def show_shift_table_page():
     my_icon = position_icons.get(st.session_state.user_position, '')
     my_display_name = f"{my_icon} {st.session_state.user_name}"
 
-    # インデックス（従業員名）をハイライトする関数
-    def highlight_user_index(index_val):
-        # rgba(255, 255, 224, 0.5) は薄い黄色を不透明度50%で表現
-        highlight_style = 'background-color: rgba(255, 255, 224, 0.5);'
-        
-        if index_val == my_display_name:
-            return highlight_style
-        else:
-            return ''
+    # スタイルを適用しない元のdf.styleオブジェクト
+    styled_df = df.style
 
-    # map_indexを使ってインデックス（従業員名セル）のみにスタイルを適用して表示
-    st.dataframe(df.style.map_index(highlight_user_index), use_container_width=True)
+    try:
+        # ログインユーザーの行インデックス（0から始まる位置）を取得
+        user_row_loc = df.index.get_loc(my_display_name)
+        
+        # 特定の行のインデックスヘッダー（th.rowN）にスタイルを適用
+        # rgba(173, 216, 230, 0.5) は半透明の薄い青色
+        styles = [{
+            'selector': f'th.row{user_row_loc}',
+            'props': [('background-color', 'rgba(173, 216, 230, 0.5)')]
+        }]
+        styled_df = styled_df.set_table_styles(styles)
+    except KeyError:
+        # ユーザーがリストにいない場合は何もしない
+        pass
+
+    st.dataframe(styled_df, use_container_width=True)
 
 
 def show_messages_page():
