@@ -165,6 +165,7 @@ def get_user_employee_id(user_id):
     conn.close()
     return employee_id_row['employee_id'] if employee_id_row else "N/A"
 
+# 変更・追加：`st.rerun()` と `py_time.sleep()` を削除
 @st.dialog("全体メッセージを送信")
 def broadcast_message_dialog():
     """管理者（社長・役職者）が全体メッセージを送信するためのダイアログ"""
@@ -188,7 +189,7 @@ def broadcast_message_dialog():
                 add_broadcast_message(message_body, st.session_state.user_company, image_base64)
 
                 st.toast("メッセージを送信しました！", icon="✅")
-
+                
             else:
                 st.warning("メッセージ内容を入力するか、画像を添付してください。")
 
@@ -243,9 +244,6 @@ def shift_edit_dialog(target_date):
                 st.session_state.last_shift_start_time = start_datetime.time()
                 st.session_state.last_shift_end_time = end_datetime.time()
                 st.toast("シフトを保存しました！", icon="✅")
-                py_time.sleep(1.5)
-                st.session_state.clicked_date_str = None
-                st.rerun()
 
     with col2:
         if st.button("削除", use_container_width=True):
@@ -255,9 +253,6 @@ def shift_edit_dialog(target_date):
                 conn.commit()
                 conn.close()
                 st.toast("シフトを削除しました。", icon="🗑️")
-                py_time.sleep(1.5)
-                st.session_state.clicked_date_str = None
-            st.rerun()
 
 # --- UI Components ---
 def show_login_register_page():
@@ -582,30 +577,7 @@ def show_shift_table_page():
             end_t = end_dt.strftime('%m/%d %H:%M') if start_dt.date() != end_dt.date() else end_dt.strftime('%H:%M')
             df.at[employee_display_name, col_name] = f"{start_t}～{end_t}"
 
-    # --- ここからハイライト処理 ---
-    # ログイン中のユーザーの表示名を作成
-    my_icon = position_icons.get(st.session_state.user_position, '')
-    my_display_name = f"{my_icon} {st.session_state.user_name}"
-
-    # スタイルを適用しない元のdf.styleオブジェクト
-    styled_df = df.style
-
-    try:
-        # ログインユーザーの行インデックス（0から始まる位置）を取得
-        user_row_loc = df.index.get_loc(my_display_name)
-        
-        # 特定の行のインデックスヘッダー（th.rowN）にスタイルを適用
-        # rgba(173, 216, 230, 0.5) は半透明の薄い青色
-        styles = [{
-            'selector': f'th.row{user_row_loc}',
-            'props': [('background-color', 'rgba(173, 216, 230, 0.5)')]
-        }]
-        styled_df = styled_df.set_table_styles(styles)
-    except KeyError:
-        # ユーザーがリストにいない場合は何もしない
-        pass
-
-    st.dataframe(styled_df, use_container_width=True)
+    st.dataframe(df, use_container_width=True)
 
 
 def show_messages_page():
@@ -642,9 +614,7 @@ def show_messages_page():
 
                     with col2:
                         if st.session_state.user_position in ["社長", "役職者"]:
-                            # メッセージ内容がNoneの場合も考慮
-                            content_str = msg['content'] or ""
-                            is_personal_message = not content_str.startswith("**【お知らせ】")
+                            is_personal_message = not msg['content'].startswith("**【お知らせ】")
                             if not is_personal_message:
                                 if st.button("🗑️ 削除", key=f"delete_{msg['id']}", use_container_width=True):
                                     st.session_state.confirming_delete_message_created_at = msg['created_at']
