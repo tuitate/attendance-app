@@ -11,104 +11,95 @@ from streamlit_autorefresh import st_autorefresh
 import re
 import base64
 
-
 from database import get_db_connection, init_db
-
 
 # --- Helper Functions ---
 def hash_password(password):
- """パスワードをSHA-256でハッシュ化する"""
- return hashlib.sha256(password.encode()).hexdigest()
-
+    """パスワードをSHA-256でハッシュ化する"""
+    return hashlib.sha256(password.encode()).hexdigest()
 
 JST = timezone(timedelta(hours=9))
 
-
 def get_jst_now():
- """タイムゾーンをJSTとして現在の時刻を取得する"""
- return datetime.now(JST)
-
+    """タイムゾーンをJSTとして現在の時刻を取得する"""
+    return datetime.now(JST)
 
 def add_message(user_id, content):
- """メッセージをデータベースに追加する"""
- conn = get_db_connection()
- now = get_jst_now().isoformat()
- conn.execute('INSERT INTO messages (user_id, content, created_at, image_base64) VALUES (?, ?, ?, ?)',
-              (user_id, content, now, None))
- conn.commit()
- conn.close()
-
+    """メッセージをデータベースに追加する"""
+    conn = get_db_connection()
+    now = get_jst_now().isoformat()
+    conn.execute('INSERT INTO messages (user_id, content, created_at, image_base64) VALUES (?, ?, ?, ?)',
+                 (user_id, content, now, None))
+    conn.commit()
+    conn.close()
 
 def add_broadcast_message(content, company_name, image_base64=None):
- """メッセージを同じ会社のすべてのユーザーに一斉送信する"""
- conn = get_db_connection()
- try:
-  users_in_company = conn.execute('SELECT id FROM users WHERE company = ?', (company_name,)).fetchall()
-  now = get_jst_now().isoformat()
-  for user_row in users_in_company:
-   conn.execute('INSERT INTO messages (user_id, content, created_at, image_base64) VALUES (?, ?, ?, ?)',
-                (user_row['id'], content, now, image_base64))
-  conn.commit()
- except sqlite3.Error as e:
-  print(f"一斉送信メッセージの送信に失敗しました: {e}")
- finally:
-  conn.close()
-
+    """メッセージを同じ会社のすべてのユーザーに一斉送信する"""
+    conn = get_db_connection()
+    try:
+        users_in_company = conn.execute('SELECT id FROM users WHERE company = ?', (company_name,)).fetchall()
+        now = get_jst_now().isoformat()
+        for user_row in users_in_company:
+            conn.execute('INSERT INTO messages (user_id, content, created_at, image_base64) VALUES (?, ?, ?, ?)',
+                         (user_row['id'], content, now, image_base64))
+        conn.commit()
+    except sqlite3.Error as e:
+        print(f"一斉送信メッセージの送信に失敗しました: {e}")
+    finally:
+        conn.close()
 
 def delete_broadcast_message(created_at_iso):
- """
- 同じタイムスタンプを持つメッセージをすべて削除する（一斉送信メッセージの削除）。
- """
- conn = get_db_connection()
- try:
-  conn.execute('DELETE FROM messages WHERE created_at = ?', (created_at_iso,))
-  conn.commit()
- except sqlite3.Error as e:
-  st.error(f"メッセージの削除中にエラーが発生しました: {e}")
- finally:
-  conn.close()
-
-
+    """
+    同じタイムスタンプを持つメッセージをすべて削除する（一斉送信メッセージの削除）。
+    """
+    conn = get_db_connection()
+    try:
+        conn.execute('DELETE FROM messages WHERE created_at = ?', (created_at_iso,))
+        conn.commit()
+    except sqlite3.Error as e:
+        st.error(f"メッセージの削除中にエラーが発生しました: {e}")
+    finally:
+        conn.close()
 
 
 def validate_password(password):
- """パスワードが要件を満たしているか検証する"""
- errors = []
- if len(password) < 8:
-  errors.append("・8文字以上である必要があります。")
- if not re.search(r"[a-z]", password):
-  errors.append("・小文字を1文字以上含める必要があります。")
- if not re.search(r"[A-Z]", password):
-  errors.append("・大文字を1文字以上含める必要があります。")
- if not re.search(r"[0-9]", password):
-  errors.append("・数字を1文字以上含める必要があります。")
- return errors
-
+    """パスワードが要件を満たしているか検証する"""
+    errors = []
+    if len(password) < 8:
+        errors.append("・8文字以上である必要があります。")
+    if not re.search(r"[a-z]", password):
+        errors.append("・小文字を1文字以上含める必要があります。")
+    if not re.search(r"[A-Z]", password):
+        errors.append("・大文字を1文字以上含める必要があります。")
+    if not re.search(r"[0-9]", password):
+        errors.append("・数字を1文字以上含める必要があります。")
+    return errors
 
 # --- Session State Initialization ---
 def init_session_state():
- """セッションステートを初期化する"""
- defaults = {
-  'logged_in': False,
-  'user_id': None,
-  'user_name': None,
-  'user_company': None,
-  'user_position': None,
-  'work_status': "not_started",
-  'attendance_id': None,
-  'break_id': None,
-  'confirmation_action': None,
-  'page': "タイムカード",
-  'last_break_reminder_date': None,
-  'calendar_date': date.today(),
-  'clicked_date_str': None,
-  'last_shift_start_time': time(9, 0),
-  'last_shift_end_time': time(17, 0),
-  'confirming_delete_message_created_at': None,
- }
- for key, default_value in defaults.items():
-  if key not in st.session_state:
-   st.session_state
+    """セッションステートを初期化する"""
+    defaults = {
+        'logged_in': False,
+        'user_id': None,
+        'user_name': None,
+        'user_company': None,
+        'user_position': None,
+        'work_status': "not_started",
+        'attendance_id': None,
+        'break_id': None,
+        'confirmation_action': None,
+        'page': "タイムカード",
+        'last_break_reminder_date': None,
+        'calendar_date': date.today(),
+        'clicked_date_str': None,
+        'last_shift_start_time': time(9, 0),
+        'last_shift_end_time': time(17, 0),
+        'confirming_delete_message_created_at': None,
+    }
+    for key, default_value in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = default_value
+
 # --- Database Functions ---
 def get_user(employee_id):
     """従業員IDでユーザー情報を取得"""
@@ -180,23 +171,24 @@ def broadcast_message_dialog():
     st.subheader("全従業員へのメッセージ送信")
     with st.form(key='broadcast_dialog_form'):
         message_content = st.text_area("メッセージ内容を入力してください。", height=150)
-        
+
         uploaded_image = st.file_uploader("画像を添付 (任意)", type=["png", "jpg", "jpeg"])
-        
+
         submitted = st.form_submit_button("この内容で送信する")
         if submitted:
             if message_content or uploaded_image:
                 sender_name = st.session_state.user_name
                 message_body = f"**【お知らせ】{sender_name}さんより**\n\n{message_content}"
-                
+
                 image_base64 = None
                 if uploaded_image is not None:
                     image_bytes = uploaded_image.getvalue()
                     image_base64 = base64.b64encode(image_bytes).decode()
 
                 add_broadcast_message(message_body, st.session_state.user_company, image_base64)
-                
+
                 st.toast("メッセージを送信しました！", icon="✅")
+
             else:
                 st.warning("メッセージ内容を入力するか、画像を添付してください。")
 
@@ -205,7 +197,7 @@ def broadcast_message_dialog():
 def shift_edit_dialog(target_date):
     """シフトを編集するためのポップアップダイアログ"""
     st.write(f"**{target_date.strftime('%Y年%m月%d日')}** のシフト")
-    
+
     conn = get_db_connection()
     existing_shift = conn.execute(
         "SELECT id, start_datetime, end_datetime FROM shifts WHERE user_id = ? AND date(start_datetime) = ?",
@@ -229,10 +221,10 @@ def shift_edit_dialog(target_date):
     with col2:
         start_time_input = st.time_input("出勤時刻", value=default_start.time())
         end_time_input = st.time_input("退勤時刻", value=default_end.time())
-    
+
     start_datetime = datetime.combine(start_date_input, start_time_input)
     end_datetime = datetime.combine(end_date_input, end_time_input)
-    
+
     col1, col2 = st.columns(2)
     with col1:
         if st.button("登録・更新", use_container_width=True, type="primary"):
@@ -241,16 +233,19 @@ def shift_edit_dialog(target_date):
             else:
                 conn = get_db_connection()
                 if existing_shift:
-                    conn.execute('UPDATE shifts SET start_datetime = ?, end_datetime = ? WHERE id = ?', 
+                    conn.execute('UPDATE shifts SET start_datetime = ?, end_datetime = ? WHERE id = ?',
                                  (start_datetime.isoformat(), end_datetime.isoformat(), existing_shift['id']))
                 else:
-                    conn.execute('INSERT INTO shifts (user_id, start_datetime, end_datetime) VALUES (?, ?, ?)', 
+                    conn.execute('INSERT INTO shifts (user_id, start_datetime, end_datetime) VALUES (?, ?, ?)',
                                  (st.session_state.user_id, start_datetime.isoformat(), end_datetime.isoformat()))
                 conn.commit()
                 conn.close()
                 st.session_state.last_shift_start_time = start_datetime.time()
                 st.session_state.last_shift_end_time = end_datetime.time()
                 st.toast("シフトを保存しました！", icon="✅")
+                py_time.sleep(1.5)
+                st.session_state.clicked_date_str = None
+                st.rerun()
 
     with col2:
         if st.button("削除", use_container_width=True):
@@ -260,6 +255,9 @@ def shift_edit_dialog(target_date):
                 conn.commit()
                 conn.close()
                 st.toast("シフトを削除しました。", icon="🗑️")
+                py_time.sleep(1.5)
+                st.session_state.clicked_date_str = None
+            st.rerun()
 
 # --- UI Components ---
 def show_login_register_page():
@@ -400,13 +398,13 @@ def show_shift_management_page():
     for shift in shifts:
         start_dt = datetime.fromisoformat(shift['start_datetime'])
         end_dt = datetime.fromisoformat(shift['end_datetime'])
-        
+
         title = f"{start_dt.strftime('%H:%M')}~{end_dt.strftime('%H:%M')}"
         if start_dt.time() >= time(22, 0) or end_dt.time() <= time(5, 0):
             title += " (夜)"
 
         events.append({"title": title, "start": start_dt.isoformat(), "end": end_dt.isoformat(), "color": "#FF6347" if (start_dt.time() >= time(22, 0) or end_dt.time() <= time(5, 0)) else "#1E90FF", "id": shift['id'], "allDay": False})
-        
+
     col1, col2, col3 = st.columns([1, 6, 1])
     with col1:
         if st.button("先月"):
@@ -435,7 +433,7 @@ def show_shift_management_page():
                 st.warning("過去の日付のシフトは変更できません。")
             else:
                 shift_edit_dialog(clicked_date)
-    
+
     if st.session_state.clicked_date_str:
         edit_date = date.fromisoformat(st.session_state.clicked_date_str)
         if edit_date < date.today():
@@ -443,7 +441,7 @@ def show_shift_management_page():
         else:
             with st.container(border=True):
                 st.subheader(f"🗓️ {edit_date.strftime('%Y年%m月%d日')} のシフト登録・編集")
-                
+
                 conn = get_db_connection()
                 existing_shift = conn.execute("SELECT id, start_datetime, end_datetime FROM shifts WHERE user_id = ? AND date(start_datetime) = ?", (st.session_state.user_id, edit_date.isoformat())).fetchone()
                 conn.close()
@@ -453,7 +451,7 @@ def show_shift_management_page():
                 if existing_shift:
                     default_start = datetime.fromisoformat(existing_shift['start_datetime'])
                     default_end = datetime.fromisoformat(existing_shift['end_datetime'])
-                    
+
                 with st.form(key=f"shift_form_{edit_date.isoformat()}"):
                     c1, c2 = st.columns(2)
                     with c1:
@@ -464,7 +462,7 @@ def show_shift_management_page():
                         end_time_input = st.time_input("退勤時刻", value=default_end.time())
                     start_datetime = datetime.combine(start_date_input, start_time_input)
                     end_datetime = datetime.combine(end_date_input, end_time_input)
-                    
+
                     c1, c2 = st.columns(2)
                     with c1:
                         if st.form_submit_button("登録・更新", use_container_width=True, type="primary"):
@@ -489,6 +487,7 @@ def show_shift_management_page():
                             else:
                                 st.toast("削除するシフトがありません。", icon="🤷")
 
+# ▼▼▼▼▼ この関数全体を修正 ▼▼▼▼▼
 def show_shift_table_page():
     st.header("月間シフト表")
     col1, col2, col3 = st.columns([1, 6, 1])
@@ -589,32 +588,26 @@ def show_shift_table_page():
     my_icon = position_icons.get(st.session_state.user_position, '')
     my_display_name = f"{my_icon} {st.session_state.user_name}"
 
-    # 行をハイライトする関数
-    def highlight_user_row(row):
-        if row.name == my_display_name:
-            return ['background-color: #FFFFE0'] * len(row) # #FFFFE0 は薄い黄色
+    # インデックス（従業員名）をハイライトする関数
+    def highlight_user_index(index_val):
+        # rgba(255, 255, 224, 0.5) は薄い黄色を不透明度50%で表現
+        highlight_style = 'background-color: rgba(255, 255, 224, 0.5);'
+        
+        if index_val == my_display_name:
+            return highlight_style
         else:
-            return [''] * len(row)
+            return ''
 
-    # スタイルを適用して表示
-    st.dataframe(df.style.apply(highlight_user_row, axis=1), use_container_width=True)
+    # map_indexを使ってインデックス（従業員名セル）のみにスタイルを適用して表示
+    st.dataframe(df.style.map_index(highlight_user_index), use_container_width=True)
 
-    # 行をハイライトする関数
-    def highlight_user_row(row):
-        if row.name == my_display_name:
-            return ['background-color: #FFFFE0'] * len(row) # #FFFFE0 は薄い黄色
-        else:
-            return [''] * len(row)
-
-    # スタイルを適用して表示
-    st.dataframe(df.style.apply(highlight_user_row, axis=1), use_container_width=True)
 
 def show_messages_page():
     st.header("メッセージ")
 
     conn = get_db_connection()
     messages = conn.execute('SELECT id, content, created_at, image_base64 FROM messages WHERE user_id = ? ORDER BY created_at DESC', (st.session_state.user_id,)).fetchall()
-    
+
     if not messages:
         st.info("新しいメッセージはありません。")
     else:
@@ -628,38 +621,40 @@ def show_messages_page():
                     with c1:
                         if st.button("はい、削除します", key=f"confirm_delete_{msg['id']}", type="primary", use_container_width=True):
                             delete_broadcast_message(msg['created_at'])
-                            st.session_state.confirming_delete_message_created_at = None 
+                            st.session_state.confirming_delete_message_created_at = None
                             st.toast("メッセージを削除しました。")
                             st.rerun()
                     with c2:
                         if st.button("いいえ", key=f"cancel_delete_{msg['id']}", use_container_width=True):
-                            st.session_state.confirming_delete_message_created_at = None 
+                            st.session_state.confirming_delete_message_created_at = None
                             st.rerun()
                 else:
                     col1, col2 = st.columns([4, 1])
                     with col1:
                         created_at_dt = datetime.fromisoformat(msg['created_at'])
                         st.markdown(f"**{created_at_dt.strftime('%Y年%m月%d日 %H:%M')}**")
-                    
+
                     with col2:
                         if st.session_state.user_position in ["社長", "役職者"]:
-                            is_personal_message = not msg['content'].startswith("**【お知らせ】")
+                            # メッセージ内容がNoneの場合も考慮
+                            content_str = msg['content'] or ""
+                            is_personal_message = not content_str.startswith("**【お知らせ】")
                             if not is_personal_message:
                                 if st.button("🗑️ 削除", key=f"delete_{msg['id']}", use_container_width=True):
                                     st.session_state.confirming_delete_message_created_at = msg['created_at']
                                     st.rerun()
-                    
+
                     if msg['content']:
                         st.markdown(msg['content'])
-                    
+
                     if msg['image_base64']:
                         image_bytes = base64.b64decode(msg['image_base64'])
                         st.image(image_bytes)
-    
+
     conn.execute('UPDATE messages SET is_read = 1 WHERE user_id = ?', (st.session_state.user_id,))
     conn.commit()
     conn.close()
-    
+
     st.divider()
 
     if st.session_state.user_position in ["社長", "役職者"]:
@@ -714,18 +709,18 @@ def show_user_registration_page():
 
     with st.form("user_registration_form"):
         company_name = st.text_input("会社名", value=st.session_state.user_company, disabled=True)
-        
+
         new_name = st.text_input("名前")
         new_position = st.radio("役職", ("役職者", "社員", "バイト"), horizontal=True)
         new_employee_id = st.text_input("従業員ID")
-        
+
         st.markdown("---")
         st.markdown("パスワードは、大文字、小文字、数字を含む8文字以上で設定してください。")
         new_password = st.text_input("初期パスワード", type="password")
         confirm_password = st.text_input("初期パスワード（確認用）", type="password")
-        
+
         submitted = st.form_submit_button("この内容で登録する")
-        
+
         if submitted:
             password_errors = validate_password(new_password)
             if not (new_name and new_employee_id and new_password):
@@ -863,29 +858,25 @@ def record_clock_in_cancellation():
         st.session_state.attendance_id = None
         st.session_state.break_id = None
 
-# 変更・追加：データベースから取得したattがNoneでないかチェックを追加
 def display_work_summary():
     """勤務時間のサマリーを表示"""
     if st.session_state.get('attendance_id'):
         conn = get_db_connection()
         att = conn.execute('SELECT * FROM attendance WHERE id = ?', (st.session_state.attendance_id,)).fetchone()
 
-        # ▼▼▼▼▼ ここから修正 ▼▼▼▼▼
         if att is None:
-            # DBとセッションの間に不整合がある場合、安全にリセットする
             st.toast("勤怠記録が見つかりませんでした。状態をリセットします。")
             st.session_state.work_status = "not_started"
             st.session_state.attendance_id = None
             conn.close()
-            py_time.sleep(1) # toast表示のためのウェイト
+            py_time.sleep(1)
             st.rerun()
-            return # この後の処理を中断
-        # ▲▲▲▲▲ ここまで修正 ▲▲▲▲▲
+            return
 
         breaks = conn.execute('SELECT * FROM breaks WHERE attendance_id = ?', (st.session_state.attendance_id,)).fetchall()
-        
+
         today_str = get_jst_now().date().isoformat()
-        
+
         shift = conn.execute(
             "SELECT start_datetime, end_datetime FROM shifts WHERE user_id = ? AND date(start_datetime) = ?",
             (st.session_state.user_id, today_str)
@@ -894,21 +885,21 @@ def display_work_summary():
 
         scheduled_end_time_str = "---"
         scheduled_break_str = "---"
-        
+
         if shift:
             start_dt = datetime.fromisoformat(shift['start_datetime'])
             end_dt = datetime.fromisoformat(shift['end_datetime'])
             scheduled_end_time_str = end_dt.strftime('%H:%M')
-            
+
             shift_duration = end_dt - start_dt
             scheduled_work_hours = shift_duration.total_seconds() / 3600
             scheduled_break_minutes = 0
-            
+
             if scheduled_work_hours > 8:
                 scheduled_break_minutes = 60
             elif scheduled_work_hours > 6:
                 scheduled_break_minutes = 45
-            
+
             if scheduled_break_minutes > 0:
                 break_start_estimate_dt = start_dt + (shift_duration / 2) - timedelta(minutes=scheduled_break_minutes / 2)
                 scheduled_break_start_time_str = break_start_estimate_dt.strftime('%H:%M')
@@ -916,7 +907,7 @@ def display_work_summary():
 
                 reminder_time = break_start_estimate_dt - timedelta(minutes=10)
                 now = get_jst_now()
-                
+
                 if st.session_state.last_break_reminder_date != today_str:
                     if now.astimezone(JST) >= reminder_time.astimezone(JST) and now.astimezone(JST) < break_start_estimate_dt.astimezone(JST):
                         add_message(st.session_state.user_id, "⏰ まもなく休憩の時間です。準備をしてください。")
@@ -929,13 +920,13 @@ def display_work_summary():
 
         with row1_col1:
             st.metric("出勤時刻", datetime.fromisoformat(att['clock_in']).strftime('%H:%M:%S') if att['clock_in'] else "---")
-        
+
         with row1_col2:
             st.metric("退勤予定時刻", scheduled_end_time_str)
 
         with row2_col1:
             st.metric("休憩予定", scheduled_break_str)
-        
+
         with row2_col2:
             total_break_seconds = 0
             for br in breaks:
@@ -946,7 +937,7 @@ def display_work_summary():
             break_hours, rem = divmod(total_break_seconds, 3600)
             break_minutes, _ = divmod(rem, 60)
             st.metric("現在の休憩時間", f"{int(break_hours):02}:{int(break_minutes):02}")
-        
+
         st.divider()
         if att['clock_in']:
             if att['clock_out']:
@@ -954,7 +945,7 @@ def display_work_summary():
                 total_work_seconds = (clock_out_time - datetime.fromisoformat(att['clock_in'])).total_seconds()
             else:
                 total_work_seconds = (get_jst_now() - datetime.fromisoformat(att['clock_in'])).total_seconds()
-            
+
             net_work_seconds = total_work_seconds - total_break_seconds
             work_hours, rem = divmod(net_work_seconds, 3600)
             work_minutes, _ = divmod(rem, 60)
@@ -967,28 +958,28 @@ def display_work_summary():
 def main():
     """メインのアプリケーションロジック"""
     st.set_page_config(layout="wide")
-    
+
     init_db()
-    
+
     init_session_state()
-    
+
     if not st.session_state.get('logged_in'):
         show_login_register_page()
     else:
         st.sidebar.title("メニュー")
         st.sidebar.markdown(f"**名前:** {st.session_state.user_name}")
         st.sidebar.markdown(f"**従業員ID:** {get_user_employee_id(st.session_state.user_id)}")
-        
+
         conn = get_db_connection()
         unread_count = conn.execute('SELECT COUNT(*) FROM messages WHERE user_id = ? AND is_read = 0', (st.session_state.user_id,)).fetchone()[0]
         conn.close()
-        
+
         message_label = "メッセージ"
         if unread_count > 0:
             message_label = f"メッセージ 🔴 ({unread_count})"
-            
+
         page_options = ["タイムカード", "シフト管理", "シフト表", "出勤状況", message_label, "ユーザー情報"]
-        
+
         if st.session_state.user_position in ["社長", "役職者"]:
             page_options.insert(1, "ユーザー登録")
 
@@ -1011,7 +1002,7 @@ def main():
             st.rerun()
 
         page_to_show = st.session_state.get('page', "タイムカード")
-        
+
         if page_to_show == "タイムカード":
             show_timecard_page()
         elif page_to_show == "ユーザー登録":
