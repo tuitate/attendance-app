@@ -51,6 +51,19 @@ def add_broadcast_message(content, company_name, image_base64=None):
     finally:
         conn.close()
 
+def delete_broadcast_message(created_at_iso):
+    """
+    同じタイムスタンプを持つメッセージをすべて削除する（一斉送信メッセージの削除）。
+    """
+    conn = get_db_connection()
+    try:
+        conn.execute('DELETE FROM messages WHERE created_at = ?', (created_at_iso,))
+        conn.commit()
+    except sqlite3.Error as e:
+        st.error(f"メッセージの削除中にエラーが発生しました: {e}")
+    finally:
+        conn.close()
+
 def validate_password(password):
     """パスワードが要件を満たしているか検証する"""
     errors = []
@@ -577,28 +590,39 @@ def show_shift_table_page():
 
     st.dataframe(df, use_container_width=True)
 
-# 変更・追加： 画像表示機能を追加
 def show_messages_page():
     st.header("メッセージ")
 
-    # --- 受信メッセージ表示 ---
     conn = get_db_connection()
-    # image_base64カラムも取得
-    messages = conn.execute('SELECT content, created_at, image_base64 FROM messages WHERE user_id = ? ORDER BY created_at DESC', (st.session_state.user_id,)).fetchall()
+    # idも取得するように変更
+    messages = conn.execute('SELECT id, content, created_at, image_base64 FROM messages WHERE user_id = ? ORDER BY created_at DESC', (st.session_state.user_id,)).fetchall()
     
     if not messages:
         st.info("新しいメッセージはありません。")
     else:
         for msg in messages:
             with st.container(border=True):
-                created_at = datetime.fromisoformat(msg['created_at']).strftime('%Y年%m月%d日 %H:%M')
-                st.markdown(f"**{created_at}**")
+                # タイムスタンプと削除ボタンを横並びにする
+                col1, col2 = st.columns([4, 1])
+                with col1:
+                    created_at_dt = datetime.fromisoformat(msg['created_at'])
+                    st.markdown(f"**{created_at_dt.strftime('%Y年%m月%d日 %H:%M')}**")
                 
-                # テキストコンテンツがあれば表示
+                with col2:
+                    # 管理者（社長・役職者）の場合のみ削除ボタンを表示
+                    if st.session_state.user_position in ["社長", "役職者"]:
+                        # is_personal_messageは、お知らせかどうかを判定する簡易的な方法
+                        is_personal_message = not msg['content'].startswith("**【お知らせ】")
+                        if not is_personal_message:
+                            if st.button("🗑️ 削除", key=f"delete_{msg['id']}", use_container_width=True):
+                                # タイムスタンプをキーに、全ユーザーからこのメッセージを削除
+                                delete_broadcast_message(msg['created_at'])
+                                st.toast("メッセージを削除しました。")
+                                st.rerun() # ページを再読み込みして表示を更新
+                
                 if msg['content']:
                     st.markdown(msg['content'])
                 
-                # 画像データがあれば表示
                 if msg['image_base64']:
                     image_bytes = base64.b64decode(msg['image_base64'])
                     st.image(image_bytes)
@@ -609,7 +633,6 @@ def show_messages_page():
     
     st.divider()
 
-    # --- メッセージ投稿ボタン (管理者のみ) ---
     if st.session_state.user_position in ["社長", "役職者"]:
         _, col2 = st.columns([0.6, 0.4])
         with col2:
