@@ -954,7 +954,7 @@ def main():
         if unread_count > 0:
             message_label = f"メッセージ 🔴 ({unread_count})"
 
-        page_options = ["タイムカード", "シフト管理", "シフト表", "出勤状況", message_label, "ユーザー情報"]
+        page_options = ["タイムカード", "シフト管理", "月間シフト表", "出勤状況", message_label, "ユーザー情報"]
 
         if st.session_state.user_position in ["社長", "役職者"]:
             page_options.insert(1, "ユーザー登録")
