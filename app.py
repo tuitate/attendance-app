@@ -9,6 +9,7 @@ from streamlit_calendar import calendar
 from dateutil.relativedelta import relativedelta
 from streamlit_autorefresh import st_autorefresh
 import re
+import base64 # 変更・追加： 画像のエンコードに必要
 
 from database import get_db_connection, init_db
 
@@ -27,20 +28,23 @@ def add_message(user_id, content):
     """メッセージをデータベースに追加する"""
     conn = get_db_connection()
     now = get_jst_now().isoformat()
-    conn.execute('INSERT INTO messages (user_id, content, created_at) VALUES (?, ?, ?)',
-                 (user_id, content, now))
+    # 変更・追加： image_base64カラムを考慮
+    conn.execute('INSERT INTO messages (user_id, content, created_at, image_base64) VALUES (?, ?, ?, ?)',
+                 (user_id, content, now, None))
     conn.commit()
     conn.close()
 
-def add_broadcast_message(content, company_name):
+# 変更・追加： image_base64を引数に追加
+def add_broadcast_message(content, company_name, image_base64=None):
     """メッセージを同じ会社のすべてのユーザーに一斉送信する"""
     conn = get_db_connection()
     try:
         users_in_company = conn.execute('SELECT id FROM users WHERE company = ?', (company_name,)).fetchall()
         now = get_jst_now().isoformat()
         for user_row in users_in_company:
-            conn.execute('INSERT INTO messages (user_id, content, created_at) VALUES (?, ?, ?)',
-                         (user_row['id'], content, now))
+            # 変更・追加： image_base64をINSERT文に追加
+            conn.execute('INSERT INTO messages (user_id, content, created_at, image_base64) VALUES (?, ?, ?, ?)',
+                         (user_row['id'], content, now, image_base64))
         conn.commit()
     except sqlite3.Error as e:
         print(f"一斉送信メッセージの送信に失敗しました: {e}")
@@ -149,23 +153,38 @@ def get_user_employee_id(user_id):
     conn.close()
     return employee_id_row['employee_id'] if employee_id_row else "N/A"
 
+# 変更・追加：画像アップロード機能を追加
 @st.dialog("全体メッセージを送信")
 def broadcast_message_dialog():
     """管理者（社長・役職者）が全体メッセージを送信するためのダイアログ"""
     st.subheader("全従業員へのメッセージ送信")
     with st.form(key='broadcast_dialog_form'):
-        message_content = st.text_area("メッセージ内容を入力してください。", height=200)
+        message_content = st.text_area("メッセージ内容を入力してください。", height=150)
+        
+        # 画像アップローダーを追加
+        uploaded_image = st.file_uploader("画像を添付 (任意)", type=["png", "jpg", "jpeg"])
+        
         submitted = st.form_submit_button("この内容で送信する")
         if submitted:
-            if message_content:
+            if message_content or uploaded_image:
                 sender_name = st.session_state.user_name
                 full_message = f"**【お知らせ】{sender_name}さんより**\n\n{message_content}"
-                add_broadcast_message(full_message, st.session_state.user_company)
+                
+                image_base64 = None
+                if uploaded_image is not None:
+                    # アップロードされた画像をBase64にエンコード
+                    image_bytes = uploaded_image.getvalue()
+                    image_base64 = base64.b64encode(image_bytes).decode()
+
+                # 画像データも一緒に送信
+                add_broadcast_message(full_message, st.session_state.user_company, image_base64)
+                
                 st.toast("メッセージを送信しました！", icon="✅")
                 py_time.sleep(1)
                 st.rerun()
             else:
-                st.warning("メッセージ内容を入力してください。")
+                st.warning("メッセージ内容を入力するか、画像を添付してください。")
+
 
 @st.dialog("シフト登録・編集")
 def shift_edit_dialog(target_date):
@@ -558,21 +577,30 @@ def show_shift_table_page():
 
     st.dataframe(df, use_container_width=True)
 
-
+# 変更・追加： 画像表示機能を追加
 def show_messages_page():
     st.header("メッセージ")
 
     # --- 受信メッセージ表示 ---
     conn = get_db_connection()
-    messages = conn.execute('SELECT content, created_at FROM messages WHERE user_id = ? ORDER BY created_at DESC', (st.session_state.user_id,)).fetchall()
+    # image_base64カラムも取得
+    messages = conn.execute('SELECT content, created_at, image_base64 FROM messages WHERE user_id = ? ORDER BY created_at DESC', (st.session_state.user_id,)).fetchall()
     
     if not messages:
         st.info("新しいメッセージはありません。")
     else:
         for msg in messages:
-            content = msg['content']
-            created_at = datetime.fromisoformat(msg['created_at']).strftime('%Y年%m月%d日 %H:%M')
-            st.container(border=True).markdown(f"**{created_at}**\n\n{content}")
+            with st.container(border=True):
+                created_at = datetime.fromisoformat(msg['created_at']).strftime('%Y年%m月%d日 %H:%M')
+                st.markdown(f"**{created_at}**")
+                
+                # テキストコンテンツがあれば表示
+                if msg['content']:
+                    st.markdown(msg['content'])
+                
+                # 画像データがあれば表示
+                if msg['image_base64']:
+                    st.image(msg['image_base64'])
     
     conn.execute('UPDATE messages SET is_read = 1 WHERE user_id = ?', (st.session_state.user_id,))
     conn.commit()
