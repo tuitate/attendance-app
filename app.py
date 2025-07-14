@@ -11,95 +11,104 @@ from streamlit_autorefresh import st_autorefresh
 import re
 import base64
 
+
 from database import get_db_connection, init_db
+
 
 # --- Helper Functions ---
 def hash_password(password):
-    """パスワードをSHA-256でハッシュ化する"""
-    return hashlib.sha256(password.encode()).hexdigest()
+ """パスワードをSHA-256でハッシュ化する"""
+ return hashlib.sha256(password.encode()).hexdigest()
+
 
 JST = timezone(timedelta(hours=9))
 
+
 def get_jst_now():
-    """タイムゾーンをJSTとして現在の時刻を取得する"""
-    return datetime.now(JST)
+ """タイムゾーンをJSTとして現在の時刻を取得する"""
+ return datetime.now(JST)
+
 
 def add_message(user_id, content):
-    """メッセージをデータベースに追加する"""
-    conn = get_db_connection()
-    now = get_jst_now().isoformat()
-    conn.execute('INSERT INTO messages (user_id, content, created_at, image_base64) VALUES (?, ?, ?, ?)',
-                 (user_id, content, now, None))
-    conn.commit()
-    conn.close()
+ """メッセージをデータベースに追加する"""
+ conn = get_db_connection()
+ now = get_jst_now().isoformat()
+ conn.execute('INSERT INTO messages (user_id, content, created_at, image_base64) VALUES (?, ?, ?, ?)',
+              (user_id, content, now, None))
+ conn.commit()
+ conn.close()
+
 
 def add_broadcast_message(content, company_name, image_base64=None):
-    """メッセージを同じ会社のすべてのユーザーに一斉送信する"""
-    conn = get_db_connection()
-    try:
-        users_in_company = conn.execute('SELECT id FROM users WHERE company = ?', (company_name,)).fetchall()
-        now = get_jst_now().isoformat()
-        for user_row in users_in_company:
-            conn.execute('INSERT INTO messages (user_id, content, created_at, image_base64) VALUES (?, ?, ?, ?)',
-                         (user_row['id'], content, now, image_base64))
-        conn.commit()
-    except sqlite3.Error as e:
-        print(f"一斉送信メッセージの送信に失敗しました: {e}")
-    finally:
-        conn.close()
+ """メッセージを同じ会社のすべてのユーザーに一斉送信する"""
+ conn = get_db_connection()
+ try:
+  users_in_company = conn.execute('SELECT id FROM users WHERE company = ?', (company_name,)).fetchall()
+  now = get_jst_now().isoformat()
+  for user_row in users_in_company:
+   conn.execute('INSERT INTO messages (user_id, content, created_at, image_base64) VALUES (?, ?, ?, ?)',
+                (user_row['id'], content, now, image_base64))
+  conn.commit()
+ except sqlite3.Error as e:
+  print(f"一斉送信メッセージの送信に失敗しました: {e}")
+ finally:
+  conn.close()
+
 
 def delete_broadcast_message(created_at_iso):
-    """
-    同じタイムスタンプを持つメッセージをすべて削除する（一斉送信メッセージの削除）。
-    """
-    conn = get_db_connection()
-    try:
-        conn.execute('DELETE FROM messages WHERE created_at = ?', (created_at_iso,))
-        conn.commit()
-    except sqlite3.Error as e:
-        st.error(f"メッセージの削除中にエラーが発生しました: {e}")
-    finally:
-        conn.close()
+ """
+ 同じタイムスタンプを持つメッセージをすべて削除する（一斉送信メッセージの削除）。
+ """
+ conn = get_db_connection()
+ try:
+  conn.execute('DELETE FROM messages WHERE created_at = ?', (created_at_iso,))
+  conn.commit()
+ except sqlite3.Error as e:
+  st.error(f"メッセージの削除中にエラーが発生しました: {e}")
+ finally:
+  conn.close()
+
+
 
 
 def validate_password(password):
-    """パスワードが要件を満たしているか検証する"""
-    errors = []
-    if len(password) < 8:
-        errors.append("・8文字以上である必要があります。")
-    if not re.search(r"[a-z]", password):
-        errors.append("・小文字を1文字以上含める必要があります。")
-    if not re.search(r"[A-Z]", password):
-        errors.append("・大文字を1文字以上含める必要があります。")
-    if not re.search(r"[0-9]", password):
-        errors.append("・数字を1文字以上含める必要があります。")
-    return errors
+ """パスワードが要件を満たしているか検証する"""
+ errors = []
+ if len(password) < 8:
+  errors.append("・8文字以上である必要があります。")
+ if not re.search(r"[a-z]", password):
+  errors.append("・小文字を1文字以上含める必要があります。")
+ if not re.search(r"[A-Z]", password):
+  errors.append("・大文字を1文字以上含める必要があります。")
+ if not re.search(r"[0-9]", password):
+  errors.append("・数字を1文字以上含める必要があります。")
+ return errors
+
 
 # --- Session State Initialization ---
 def init_session_state():
-    """セッションステートを初期化する"""
-    defaults = {
-        'logged_in': False,
-        'user_id': None,
-        'user_name': None,
-        'user_company': None,
-        'user_position': None,
-        'work_status': "not_started",
-        'attendance_id': None,
-        'break_id': None,
-        'confirmation_action': None,
-        'page': "タイムカード",
-        'last_break_reminder_date': None,
-        'calendar_date': date.today(),
-        'clicked_date_str': None,
-        'last_shift_start_time': time(9, 0),
-        'last_shift_end_time': time(17, 0),
-        'confirming_delete_message_created_at': None,
-    }
-    for key, default_value in defaults.items():
-        if key not in st.session_state:
-            st.session_state[key] = default_value
-
+ """セッションステートを初期化する"""
+ defaults = {
+  'logged_in': False,
+  'user_id': None,
+  'user_name': None,
+  'user_company': None,
+  'user_position': None,
+  'work_status': "not_started",
+  'attendance_id': None,
+  'break_id': None,
+  'confirmation_action': None,
+  'page': "タイムカード",
+  'last_break_reminder_date': None,
+  'calendar_date': date.today(),
+  'clicked_date_str': None,
+  'last_shift_start_time': time(9, 0),
+  'last_shift_end_time': time(17, 0),
+  'confirming_delete_message_created_at': None,
+ }
+ for key, default_value in defaults.items():
+  if key not in st.session_state:
+   st.session_state
 # --- Database Functions ---
 def get_user(employee_id):
     """従業員IDでユーザー情報を取得"""
