@@ -11,30 +11,39 @@ def get_db_connection():
 def update_db_schema():
     """
     データベースのテーブルスキーマをチェックし、必要に応じて更新する。
-    usersテーブルに 'company' と 'position' カラムがなければ追加する。
     """
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    # usersテーブルのカラム情報を取得
+    # --- usersテーブルの更新チェック ---
     cursor.execute("PRAGMA table_info(users)")
-    columns = [row['name'] for row in cursor.fetchall()]
+    user_columns = [row['name'] for row in cursor.fetchall()]
     
-    # 'company'カラムが存在しない場合、追加する
-    if 'company' not in columns:
+    if 'company' not in user_columns:
         try:
             cursor.execute("ALTER TABLE users ADD COLUMN company TEXT")
             print("Added 'company' column to 'users' table.")
         except sqlite3.Error as e:
             print(f"Error adding 'company' column: {e}")
 
-    # 'position'カラムが存在しない場合、追加する
-    if 'position' not in columns:
+    if 'position' not in user_columns:
         try:
             cursor.execute("ALTER TABLE users ADD COLUMN position TEXT")
             print("Added 'position' column to 'users' table.")
         except sqlite3.Error as e:
             print(f"Error adding 'position' column: {e}")
+
+    # --- messagesテーブルの更新チェック --- # 変更・追加
+    cursor.execute("PRAGMA table_info(messages)")
+    message_columns = [row['name'] for row in cursor.fetchall()]
+
+    # 'image_base64'カラムが存在しない場合、追加する
+    if 'image_base64' not in message_columns:
+        try:
+            cursor.execute("ALTER TABLE messages ADD COLUMN image_base64 TEXT")
+            print("Added 'image_base64' column to 'messages' table.")
+        except sqlite3.Error as e:
+            print(f"Error adding 'image_base64' column: {e}")
 
     conn.commit()
     conn.close()
@@ -90,14 +99,15 @@ def init_db():
         )
     ''')
 
-    # messages テーブル
+    # messages テーブル # 変更・追加
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
-            content TEXT NOT NULL,
+            content TEXT, -- NOT NULLを削除し、画像のみの送信を許可
             created_at TEXT NOT NULL,
             is_read INTEGER DEFAULT 0,
+            image_base64 TEXT, -- 画像をBase64文字列で保存するカラム
             FOREIGN KEY (user_id) REFERENCES users (id)
         )
     ''')
