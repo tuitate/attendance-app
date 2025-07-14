@@ -985,7 +985,7 @@ def main():
             show_user_registration_page()
         elif page_to_show == "シフト管理":
             show_shift_management_page()
-        elif page_to_show == "月間シフト表":
+        elif page_to_show == "シフト表":
             show_shift_table_page()
         elif page_to_show == "出勤状況":
             show_work_status_page()
