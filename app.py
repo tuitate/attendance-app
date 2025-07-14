@@ -76,7 +76,6 @@ def validate_password(password):
     return errors
 
 # --- Session State Initialization ---
-# 変更・追加：削除確認用のセッションステートを追加
 def init_session_state():
     """セッションステートを初期化する"""
     defaults = {
@@ -95,7 +94,7 @@ def init_session_state():
         'clicked_date_str': None,
         'last_shift_start_time': time(9, 0),
         'last_shift_end_time': time(17, 0),
-        'confirming_delete_message_created_at': None, # 削除確認中のメッセージのタイムスタンプ
+        'confirming_delete_message_created_at': None,
     }
     for key, default_value in defaults.items():
         if key not in st.session_state:
@@ -179,7 +178,6 @@ def broadcast_message_dialog():
         if submitted:
             if message_content or uploaded_image:
                 sender_name = st.session_state.user_name
-                # 送信者情報をメッセージ内容から分離
                 message_body = f"**【お知らせ】{sender_name}さんより**\n\n{message_content}"
                 
                 image_base64 = None
@@ -588,7 +586,6 @@ def show_shift_table_page():
     st.dataframe(df, use_container_width=True)
 
 
-# 変更・追加：削除確認のロジックを全面的に追加
 def show_messages_page():
     st.header("メッセージ")
 
@@ -600,25 +597,22 @@ def show_messages_page():
     else:
         for msg in messages:
             with st.container(border=True):
-                # このメッセージが削除確認中かどうかをチェック
                 is_confirming_this_message = st.session_state.confirming_delete_message_created_at == msg['created_at']
 
                 if is_confirming_this_message:
-                    # ---- 削除確認の表示 ----
                     st.warning("このメッセージを全ユーザーから削除します。よろしいですか？")
                     c1, c2 = st.columns(2)
                     with c1:
                         if st.button("はい、削除します", key=f"confirm_delete_{msg['id']}", type="primary", use_container_width=True):
                             delete_broadcast_message(msg['created_at'])
-                            st.session_state.confirming_delete_message_created_at = None # 確認状態をリセット
+                            st.session_state.confirming_delete_message_created_at = None 
                             st.toast("メッセージを削除しました。")
                             st.rerun()
                     with c2:
                         if st.button("いいえ", key=f"cancel_delete_{msg['id']}", use_container_width=True):
-                            st.session_state.confirming_delete_message_created_at = None # 確認状態をリセット
+                            st.session_state.confirming_delete_message_created_at = None 
                             st.rerun()
                 else:
-                    # ---- 通常のメッセージ表示 ----
                     col1, col2 = st.columns([4, 1])
                     with col1:
                         created_at_dt = datetime.fromisoformat(msg['created_at'])
@@ -629,7 +623,6 @@ def show_messages_page():
                             is_personal_message = not msg['content'].startswith("**【お知らせ】")
                             if not is_personal_message:
                                 if st.button("🗑️ 削除", key=f"delete_{msg['id']}", use_container_width=True):
-                                    # 確認状態に移行
                                     st.session_state.confirming_delete_message_created_at = msg['created_at']
                                     st.rerun()
                     
@@ -847,11 +840,25 @@ def record_clock_in_cancellation():
         st.session_state.attendance_id = None
         st.session_state.break_id = None
 
+# 変更・追加：データベースから取得したattがNoneでないかチェックを追加
 def display_work_summary():
     """勤務時間のサマリーを表示"""
     if st.session_state.get('attendance_id'):
         conn = get_db_connection()
         att = conn.execute('SELECT * FROM attendance WHERE id = ?', (st.session_state.attendance_id,)).fetchone()
+
+        # ▼▼▼▼▼ ここから修正 ▼▼▼▼▼
+        if att is None:
+            # DBとセッションの間に不整合がある場合、安全にリセットする
+            st.toast("勤怠記録が見つかりませんでした。状態をリセットします。")
+            st.session_state.work_status = "not_started"
+            st.session_state.attendance_id = None
+            conn.close()
+            py_time.sleep(1) # toast表示のためのウェイト
+            st.rerun()
+            return # この後の処理を中断
+        # ▲▲▲▲▲ ここまで修正 ▲▲▲▲▲
+
         breaks = conn.execute('SELECT * FROM breaks WHERE attendance_id = ?', (st.session_state.attendance_id,)).fetchall()
         
         today_str = get_jst_now().date().isoformat()
