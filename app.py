@@ -188,8 +188,6 @@ def broadcast_message_dialog():
                 add_broadcast_message(message_body, st.session_state.user_company, image_base64)
                 
                 st.toast("メッセージを送信しました！", icon="✅")
-                py_time.sleep(1)
-                st.rerun()
             else:
                 st.warning("メッセージ内容を入力するか、画像を添付してください。")
 
