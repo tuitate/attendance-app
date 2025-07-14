@@ -476,9 +476,11 @@ def show_shift_table_page():
     last_day = first_day.replace(day=py_calendar.monthrange(first_day.year, first_day.month)[1])
     
     conn = get_db_connection()
+    # 【修正点①】ログイン中のユーザーの会社名を取得
     company_name = st.session_state.user_company
 
-    # 会社名でユーザーを絞り込み、役職も取得する
+    # 【修正点②】会社名でユーザーを絞り込み、役職(position)も取得する
+    # 役職に応じて表示順も並び替える
     users_query = """
         SELECT id, name, position 
         FROM users 
@@ -494,20 +496,20 @@ def show_shift_table_page():
     """
     users = pd.read_sql_query(users_query, conn, params=(company_name,))
     
-    # 自社の従業員のシフトのみ取得する
-    user_ids_in_company = tuple(users['id'].tolist())
     if users.empty:
         st.info("あなたの会社には、まだ従業員が登録されていません。")
         conn.close()
         return
         
+    # 【修正点③】自社の従業員のシフトのみ取得する
+    user_ids_in_company = tuple(users['id'].tolist())
     placeholders = ','.join('?' for _ in user_ids_in_company)
     shifts_query = f"SELECT user_id, start_datetime, end_datetime FROM shifts WHERE user_id IN ({placeholders}) AND date(start_datetime) BETWEEN ? AND ?"
     params = user_ids_in_company + (first_day.isoformat(), last_day.isoformat())
     shifts = pd.read_sql_query(shifts_query, conn, params=params)
     conn.close()
 
-    # ### 修正点 2-1: 役職アイコンのマッピングを定義 ###
+    # 【修正点④】役職とアイコンの対応表を定義
     position_icons = {
         "社長": "👑",
         "役職者": "💪",
@@ -515,13 +517,13 @@ def show_shift_table_page():
         "バイト": "👦🏿"
     }
 
-    # ### 修正点 2-2: 表示名にアイコンを付与 ###
+    # 【修正点⑤】従業員名とアイコンを結合した「表示名」を作成
     users['display_name'] = users.apply(
         lambda row: f"{position_icons.get(row['position'], '')} {row['name']}",
         axis=1
     )
 
-    # DataFrameのインデックスに新しい表示名を設定
+    # 「表示名」をテーブルの行名(index)として設定
     df = pd.DataFrame(index=users['display_name'])
     df.index.name = "従業員名"
 
@@ -533,7 +535,7 @@ def show_shift_table_page():
         col_name = f"{day_str} ({weekday_str})"
         df[col_name] = ""
 
-    # ### 修正点 2-3: 表示名を使ってシフト情報をマッピング ###
+    # ユーザーIDと「表示名」を紐づけて、シフト情報を正しく書き込む
     user_id_to_display_name = pd.Series(users.display_name.values, index=users.id).to_dict()
     
     for _, row in shifts.iterrows():
@@ -549,21 +551,7 @@ def show_shift_table_page():
             df.at[employee_display_name, col_name] = f"{start_t}～{end_t}"
 
     st.dataframe(df, use_container_width=True)
-    
-def show_messages_page():
-    st.header("メッセージ")
-    conn = get_db_connection()
-    messages = conn.execute('SELECT content, created_at FROM messages WHERE user_id = ? ORDER BY created_at DESC', (st.session_state.user_id,)).fetchall()
-    if not messages:
-        st.info("新しいメッセージはありません。")
-    else:
-        for msg in messages:
-            content = msg['content']
-            created_at = datetime.fromisoformat(msg['created_at']).strftime('%Y年%m月%d日 %H:%M')
-            st.container(border=True).markdown(f"**{created_at}**\n\n{content}")
-    conn.execute('UPDATE messages SET is_read = 1 WHERE user_id = ?', (st.session_state.user_id,))
-    conn.commit()
-    conn.close()
+
 
 def show_user_info_page():
     st.header("ユーザー情報")
