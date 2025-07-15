@@ -756,21 +756,48 @@ def show_user_info_page():
                             st.error("パスワードの変更中にエラーが発生しました。")
 
 def show_employee_information_page():
-    """社長専用の従業員情報閲覧ページ"""
+    """社長・役職者専用の従業員情報閲覧・削除ページ"""
     st.header("従業員情報")
     st.info("あなたの会社の全従業員の情報を表示しています。")
 
-    if st.session_state.user_position != "社長":
+    # アクセス権限のチェック
+    if st.session_state.user_position not in ["社長", "役職者"]:
         st.error("このページへのアクセス権限がありません。")
         return
 
+    # === 削除確認のダイアログ表示ロジック ===
+    if st.session_state.get('confirming_delete_user_id'):
+        user_to_delete_id = st.session_state.confirming_delete_user_id
+        conn = get_db_connection()
+        user_to_delete_info = conn.execute('SELECT name FROM users WHERE id = ?', (user_to_delete_id,)).fetchone()
+        conn.close()
+
+        if user_to_delete_info:
+            user_to_delete_name = user_to_delete_info['name']
+            st.warning(f"本当に従業員「{user_to_delete_name}」さんを削除しますか？\n\nこの操作は元に戻せません。関連するすべての勤怠記録やシフト情報も削除されます。")
+            c1, c2 = st.columns(2)
+            with c1:
+                if st.button("はい、削除します", key=f"confirm_delete_{user_to_delete_id}", type="primary", use_container_width=True):
+                    if delete_user(user_to_delete_id):
+                        st.success(f"「{user_to_delete_name}」さんを削除しました。")
+                    else:
+                        st.error("削除中にエラーが発生しました。")
+                    st.session_state.confirming_delete_user_id = None
+                    st.rerun()
+            with c2:
+                if st.button("いいえ", key=f"cancel_delete_{user_to_delete_id}", use_container_width=True):
+                    st.session_state.confirming_delete_user_id = None
+                    st.rerun()
+        else:
+            # 削除対象が見つからなかった場合
+            st.session_state.confirming_delete_user_id = None
+
+
+    # === 従業員リストの表示ロジック ===
     conn = get_db_connection()
     company_name = st.session_state.user_company
-
-    # === 修正箇所 ===
-    # ORDER BY句のCASE文を修正し、「社長」が最優先(1)で表示されるように変更
     query = """
-    SELECT name, position, employee_id, created_at
+    SELECT id, name, position, employee_id, created_at
     FROM users
     WHERE company = ?
     ORDER BY
@@ -783,29 +810,40 @@ def show_employee_information_page():
         END,
         id
     """
-    
     try:
-        df = pd.read_sql_query(query, conn, params=(company_name,))
-        
-        if df.empty:
+        all_users = conn.execute(query, (company_name,)).fetchall()
+
+        if not all_users:
             st.warning("まだ従業員が登録されていません。")
         else:
-            df.rename(columns={
-                'name': '名前',
-                'position': '役職',
-                'employee_id': '従業員ID',
-                'created_at': '登録日時'
-            }, inplace=True)
+            # ヘッダーを表示
+            header_cols = st.columns([2, 2, 2, 3, 1])
+            header_cols[0].write("**名前**")
+            header_cols[1].write("**役職**")
+            header_cols[2].write("**従業員ID**")
+            header_cols[3].write("**登録日時**")
+            st.divider()
 
-            df['登録日時'] = pd.to_datetime(df['登録日時']).dt.strftime('%Y年%m月%d日 %H:%M')
-            
-            st.dataframe(df, use_container_width=True, hide_index=True)
+            # 各従業員情報をループで表示
+            for user in all_users:
+                cols = st.columns([2, 2, 2, 3, 1])
+                cols[0].write(user['name'])
+                cols[1].write(user['position'])
+                cols[2].write(user['employee_id'])
+                cols[3].write(datetime.fromisoformat(user['created_at']).strftime('%Y年%m月%d日 %H:%M'))
+
+                # 自分自身は削除できないようにボタンを表示しない
+                if user['id'] != st.session_state.user_id:
+                    with cols[4]:
+                        if st.button("削除", key=f"delete_{user['id']}", use_container_width=True):
+                            st.session_state.confirming_delete_user_id = user['id']
+                            st.rerun()
+                st.divider()
 
     except Exception as e:
         st.error(f"従業員情報の読み込み中にエラーが発生しました: {e}")
     finally:
         conn.close()
-
 def show_user_registration_page():
     """管理者（社長・役職者）が新しいユーザーを登録するためのページ"""
     st.header("ユーザー登録")
