@@ -24,8 +24,8 @@ def get_jst_now():
 def add_message(user_id, content):
     conn = get_db_connection()
     now = get_jst_now().isoformat()
-    conn.execute('INSERT INTO messages (user_id, sender_id, content, created_at, file_base64, file_name, file_type) VALUES (?, ?, ?, ?, ?, ?, ?)',
-                 (user_id, user_id, content, now, None, None, None))
+    conn.execute('INSERT INTO messages (user_id, sender_id, content, created_at, message_type) VALUES (?, ?, ?, ?, ?)',
+                 (user_id, user_id, content, now, 'SYSTEM'))
     conn.commit()
     conn.close()
 
@@ -35,8 +35,8 @@ def add_broadcast_message(sender_id, content, company_name, file_base64=None, fi
         users_in_company = conn.execute('SELECT id FROM users WHERE company = ?', (company_name,)).fetchall()
         now = get_jst_now().isoformat()
         for user_row in users_in_company:
-            conn.execute('INSERT INTO messages (user_id, sender_id, content, created_at, file_base64, file_name, file_type) VALUES (?, ?, ?, ?, ?, ?, ?)',
-                         (user_row['id'], sender_id, content, now, file_base64, file_name, file_type))
+            conn.execute('INSERT INTO messages (user_id, sender_id, content, created_at, file_base64, file_name, file_type, message_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                         (user_row['id'], sender_id, content, now, file_base64, file_name, file_type, 'BROADCAST'))
         conn.commit()
     except sqlite3.Error as e:
         print(f"一斉送信メッセージの送信に失敗しました: {e}")
@@ -47,8 +47,8 @@ def add_direct_message(sender_id, recipient_id, content, file_base64=None, file_
     conn = get_db_connection()
     now = get_jst_now().isoformat()
     try:
-        conn.execute('INSERT INTO messages (user_id, sender_id, content, created_at, file_base64, file_name, file_type) VALUES (?, ?, ?, ?, ?, ?, ?)',
-                     (recipient_id, sender_id, content, now, file_base64, file_name, file_type))
+        conn.execute('INSERT INTO messages (user_id, sender_id, content, created_at, file_base64, file_name, file_type, message_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                     (recipient_id, sender_id, content, now, file_base64, file_name, file_type, 'DIRECT'))
         conn.commit()
     except sqlite3.Error as e:
         print(f"ダイレクトメッセージの送信に失敗しました: {e}")
@@ -65,7 +65,8 @@ def render_dm_chat_window(recipient_id, recipient_name):
         conn = get_db_connection()
         messages = conn.execute("""
             SELECT * FROM messages
-            WHERE (user_id = ? AND sender_id = ?) OR (user_id = ? AND sender_id = ?)
+            WHERE message_type = 'DIRECT' AND
+                  ((user_id = ? AND sender_id = ?) OR (user_id = ? AND sender_id = ?))
             ORDER BY created_at ASC
         """, (current_user_id, recipient_id, recipient_id, current_user_id)).fetchall()
         conn.close()
@@ -73,7 +74,8 @@ def render_dm_chat_window(recipient_id, recipient_name):
         for msg in messages:
             role = "user" if msg['sender_id'] == current_user_id else "assistant"
             with st.chat_message(role):
-                st.markdown(msg['content'])
+                if msg['content']:
+                    st.markdown(msg['content'])
                 if msg['file_base64']:
                     file_bytes = base64.b64decode(msg['file_base64'])
                     if msg['file_type'] and msg['file_type'].startswith("image/"):
@@ -86,10 +88,21 @@ def render_dm_chat_window(recipient_id, recipient_name):
                             mime=msg['file_type']
                         )
 
-    prompt = st.chat_input("メッセージを入力...")
-    if prompt:
-        add_direct_message(current_user_id, recipient_id, prompt)
-        st.rerun()
+    with st.container():
+        message_input = st.text_input("メッセージを入力...", key=f"dm_input_{recipient_id}")
+        file_input = st.file_uploader("ファイルを添付", key=f"dm_file_{recipient_id}", label_visibility="collapsed")
+        
+        if st.button("送信", key=f"dm_send_{recipient_id}"):
+            if message_input or file_input:
+                file_base64, file_name, file_type = None, None, None
+                if file_input:
+                    file_bytes = file_input.getvalue()
+                    file_base64 = base64.b64encode(file_bytes).decode()
+                    file_name = file_input.name
+                    file_type = file_input.type
+                
+                add_direct_message(current_user_id, recipient_id, message_input, file_base64, file_name, file_type)
+                st.rerun()
 
 def delete_broadcast_message(created_at_iso):
     conn = get_db_connection()
@@ -700,6 +713,7 @@ def show_direct_message_page():
         st.info("上部のセレクトボックスから、メッセージを送る相手を選択してください。")
 
 def show_messages_page():
+    st.header("全体メッセージ")
     col1, col2 = st.columns([2, 1])
     with col1:
         st.header("全体メッセージ")
@@ -709,7 +723,11 @@ def show_messages_page():
     st.divider()
 
     conn = get_db_connection()
-    messages = conn.execute('SELECT id, content, created_at, file_base64, file_name, file_type, sender_id FROM messages WHERE user_id = ? ORDER BY created_at DESC', (st.session_state.user_id,)).fetchall()
+    messages = conn.execute("""
+        SELECT id, content, created_at, file_base64, file_name, file_type, sender_id FROM messages
+        WHERE user_id = ? AND message_type IN ('BROADCAST', 'SYSTEM')
+        ORDER BY created_at DESC
+    """, (st.session_state.user_id,)).fetchall()
 
     if not messages:
         st.info("新しいメッセージはありません。")
