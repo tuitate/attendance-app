@@ -139,7 +139,7 @@ def update_user_password(user_id, new_password):
 
 def get_today_attendance_status(user_id):
     """その日の勤怠状況をDBから取得し、セッションステートを更新"""
-    today_str = date.today().isoformat()
+    today_str = get_jst_now().date().isoformat()
     conn = get_db_connection()
     att = conn.execute('SELECT * FROM attendance WHERE user_id = ? AND work_date = ?', (user_id, today_str)).fetchone()
     if att:
