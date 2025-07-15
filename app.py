@@ -593,7 +593,7 @@ def show_shift_table_page():
             # ハイライトしたいユーザー名の位置を見つける
             idx_pos = column[column == name_to_highlight].index[0]
             # スタイルを適用（色は薄い青色）
-            styles[idx_pos] = 'background-color: #e6f3ff'
+            styles[idx_pos] = 'background-color: rgba(230, 243, 255, 0.6)'
         except IndexError:
             pass # ユーザーが見つからない場合は何もしない
         return styles
