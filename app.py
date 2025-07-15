@@ -251,6 +251,7 @@ def shift_edit_dialog(target_date):
                 st.session_state.last_shift_start_time = start_datetime.time()
                 st.session_state.last_shift_end_time = end_datetime.time()
                 st.toast("シフトを保存しました！", icon="✅")
+                st.session_state.page = "全体メッセージ"
                 st.rerun()
 
     with col2:
