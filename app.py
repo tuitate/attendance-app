@@ -198,6 +198,7 @@ def broadcast_message_dialog():
                 add_broadcast_message(st.session_state.user_id, message_body, st.session_state.user_company, file_base64, file_name, file_type)
 
                 st.toast("メッセージを送信しました！", icon="✅")
+                st.session_state.page = "タイムカード"
                 st.session_state.page = "全体メッセージ"
                 st.rerun()
             else:
@@ -252,6 +253,7 @@ def shift_edit_dialog(target_date):
                 st.session_state.last_shift_start_time = start_datetime.time()
                 st.session_state.last_shift_end_time = end_datetime.time()
                 st.toast("シフトを保存しました！", icon="✅")
+                st.session_state.page = "タイムカード"
                 st.session_state.page = "シフト管理"
                 st.rerun()
 
@@ -263,6 +265,7 @@ def shift_edit_dialog(target_date):
                 conn.commit()
                 conn.close()
                 st.toast("シフトを削除しました。", icon="🗑️")
+                st.session_state.page = "タイムカード"
                 st.session_state.page = "シフト管理"
                 st.rerun()
 
