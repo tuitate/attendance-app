@@ -57,8 +57,19 @@ def add_direct_message(sender_id, recipient_id, content, file_base64=None, file_
 
 def render_dm_chat_window(recipient_id, recipient_name):
     st.subheader(f"💬 {recipient_name}さんとのメッセージ")
-    
     current_user_id = st.session_state.user_id
+    conn = get_db_connection()
+    try:
+        conn.execute("""
+            UPDATE messages
+            SET is_read = 1
+            WHERE user_id = ? AND sender_id = ? AND is_read = 0 AND message_type = 'DIRECT'
+        """, (current_user_id, recipient_id))
+        conn.commit()
+    except sqlite3.Error as e:
+        print(f"DMの既読処理中にエラー: {e}")
+    finally:
+        conn.close()
 
     chat_container = st.container(height=500)
     with chat_container:
@@ -1199,6 +1210,7 @@ def display_work_summary():
                 st.session_state.last_clock_out_reminder_date = today_str
                 
 def main():
+    """メインのアプリケーションロジック"""
     st.set_page_config(layout="wide")
 
     init_db()
@@ -1212,31 +1224,36 @@ def main():
         st.sidebar.markdown(f"**従業員ID:** {get_user_employee_id(st.session_state.user_id)}")
 
         conn = get_db_connection()
-        unread_count = conn.execute('SELECT COUNT(*) FROM messages WHERE user_id = ? AND is_read = 0', (st.session_state.user_id,)).fetchone()[0]
+        broadcast_unread_count = conn.execute("SELECT COUNT(*) FROM messages WHERE user_id = ? AND is_read = 0 AND message_type IN ('BROADCAST', 'SYSTEM')", (st.session_state.user_id,)).fetchone()[0]
+        dm_unread_count = conn.execute("SELECT COUNT(*) FROM messages WHERE user_id = ? AND is_read = 0 AND message_type = 'DIRECT'", (st.session_state.user_id,)).fetchone()[0]
         conn.close()
 
-        message_label = "全体メッセージ"
-        if unread_count > 0:
-            message_label = f"全体メッセージ 🔴 ({unread_count})"
+        broadcast_message_label = "全体メッセージ"
+        if broadcast_unread_count > 0:
+            broadcast_message_label = f"全体メッセージ 🔴 ({broadcast_unread_count})"
 
-        page_options = ["タイムカード", "シフト管理", "シフト表", "出勤状況", message_label, "ダイレクトメッセージ", "ユーザー情報"]
+        dm_label = "ダイレクトメッセージ"
+        if dm_unread_count > 0:
+            dm_label = "ダイレクトメッセージ 🔴"
+
+        page_options = ["タイムカード", "シフト管理", "シフト表", "出勤状況", broadcast_message_label, dm_label, "ユーザー情報"]
         
         if st.session_state.user_position in ["社長", "役職者"]:
             page_options.insert(1, "従業員情報")
             page_options.insert(1, "ユーザー登録")
 
         try:
-            if st.session_state.page not in page_options:
-                st.session_state.page = "タイムカード"
-            current_page_index = page_options.index(st.session_state.page)
-        except ValueError:
+            current_page_name = st.session_state.page.split(" 🔴")[0]
+            base_page_options = [opt.split(" 🔴")[0] for opt in page_options]
+            current_page_index = base_page_options.index(current_page_name)
+        except (ValueError, AttributeError):
             current_page_index = 0
 
         page = st.sidebar.radio("ページを選択", page_options, index=current_page_index)
 
         if st.session_state.page != page:
             st.session_state.page = page
-            if page != "ダイレクトメッセージ":
+            if not page.startswith("ダイレクトメッセージ"):
                 st.session_state.dm_selected_user_id = None
             st.rerun()
 
@@ -1261,7 +1278,7 @@ def main():
             show_work_status_page()
         elif page_to_show.startswith("全体メッセージ"):
             show_messages_page()
-        elif page_to_show == "ダイレクトメッセージ":
+        elif page_to_show.startswith("ダイレクトメッセージ"):
             show_direct_message_page()
         elif page_to_show == "ユーザー情報":
             show_user_info_page()
