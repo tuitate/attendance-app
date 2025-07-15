@@ -348,20 +348,31 @@ def show_timecard_page():
         else:
             if st.session_state.work_status == "not_started":
                 if st.button("出勤", key="clock_in", use_container_width=True):
+                    # === ここからが修正箇所です ===
                     conn = get_db_connection()
-                    today_str = date.today().isoformat()
+                    today_str = get_jst_now().date().isoformat()
                     shift = conn.execute("SELECT start_datetime FROM shifts WHERE user_id = ? AND date(start_datetime) = ?", (st.session_state.user_id, today_str)).fetchone()
                     conn.close()
-                    can_clock_in = True
-                    if shift:
-                        start_dt = datetime.fromisoformat(shift['start_datetime'])
+
+                    if shift is None:
+                        # 1. シフトが登録されていない場合の処理
+                        st.warning("本日のシフトが登録されていません。先にシフトを登録してください。")
+                    else:
+                        # 2. シフトが登録されている場合の時刻チェック
+                        naive_start_dt = datetime.fromisoformat(shift['start_datetime'])
+                        start_dt = naive_start_dt.replace(tzinfo=JST) # タイムゾーン情報を付与
                         earliest_clock_in = start_dt - timedelta(minutes=5)
-                        if get_jst_now() < earliest_clock_in:
-                            st.toast(f"出勤時刻の5分前（{earliest_clock_in.strftime('%H:%M')}）から打刻できます。", icon="⚠️")
-                            can_clock_in = False
-                    if can_clock_in:
-                        st.session_state.confirmation_action = 'clock_in'
-                        st.rerun()
+                        now = get_jst_now()
+
+                        if now < earliest_clock_in:
+                            # 5分前より早い場合は警告
+                            st.warning(f"出勤できません。出勤時刻の5分前（{earliest_clock_in.strftime('%H:%M')}）から打刻できます。")
+                        else:
+                            # 5分前以降であれば確認画面へ
+                            st.session_state.confirmation_action = 'clock_in'
+                            st.rerun()
+                    # === ここまでが修正箇所です ===
+
             elif st.session_state.work_status == "working":
                 col1, col2, col3 = st.columns(3)
                 with col1:
@@ -380,6 +391,7 @@ def show_timecard_page():
                 if st.button("休憩終了", key="break_end", use_container_width=True):
                     st.session_state.confirmation_action = 'break_end'
                     st.rerun()
+    
     display_work_summary()
 
 def show_shift_management_page():
