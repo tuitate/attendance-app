@@ -96,6 +96,7 @@ def init_session_state():
         'confirming_delete_message_created_at': None,
         'clock_in_error': None,
         'confirming_delete_user_id': None,
+        'calendar_force_refresh_key': 0,
     }
     for key, default_value in defaults.items():
         if key not in st.session_state:
@@ -268,6 +269,7 @@ def shift_edit_dialog(target_date):
                 st.session_state.last_shift_start_time = start_datetime.time()
                 st.session_state.last_shift_end_time = end_datetime.time()
                 st.toast("シフトを保存しました！", icon="✅")
+                st.session_state.calendar_force_refresh_key += 1
                 st.rerun()
 
     with col2:
@@ -278,6 +280,7 @@ def shift_edit_dialog(target_date):
                 conn.commit()
                 conn.close()
                 st.toast("シフトを削除しました。", icon="🗑️")
+                st.session_state.calendar_force_refresh_key += 1
                 st.rerun()
 
 def show_login_register_page():
