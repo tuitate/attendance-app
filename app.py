@@ -542,19 +542,23 @@ def show_shift_table_page():
     conn.close()
 
     position_icons = {
-        "社長": "👑",
-        "役職者": "🥈",
-        "社員": "🥉",
-        "バイト": "👦🏿"
+        "社長": "👑", "役職者": "🥈", "社員": "🥉", "バイト": "👦🏿"
     }
+
+    # === 修正箇所 (ここから) ===
+
+    # ログイン中のユーザーの表示名を特定
+    current_user_icon = position_icons.get(st.session_state.user_position, '')
+    current_user_display_name = f"{current_user_icon} {st.session_state.user_name}"
 
     users['display_name'] = users.apply(
         lambda row: f"{position_icons.get(row['position'], '')} {row['name']}",
         axis=1
     )
 
-    df = pd.DataFrame(index=users['display_name'])
-    df.index.name = "従業員名"
+    # DataFrameを作成し、「従業員名」を通常の列として設定
+    df = pd.DataFrame()
+    df['従業員名'] = users['display_name']
 
     date_range = pd.to_datetime(pd.date_range(start=first_day, end=last_day))
     for d in date_range:
@@ -563,11 +567,12 @@ def show_shift_table_page():
         col_name = f"{day_str} ({weekday_str})"
         df[col_name] = ""
 
-    user_id_to_display_name = pd.Series(users.display_name.values, index=users.id).to_dict()
+    # スタイリングのために、一時的にuser_idをインデックスに設定
+    df.set_index(users['id'], inplace=True)
 
     for _, row in shifts.iterrows():
-        employee_display_name = user_id_to_display_name.get(row['user_id'])
-        if employee_display_name and employee_display_name in df.index:
+        user_id = row['user_id']
+        if user_id in df.index:
             start_dt = datetime.fromisoformat(row['start_datetime'])
             end_dt = datetime.fromisoformat(row['end_datetime'])
             day_str = start_dt.strftime('%d')
@@ -575,10 +580,30 @@ def show_shift_table_page():
             col_name = f"{day_str} ({weekday_str})"
             start_t = start_dt.strftime('%H:%M')
             end_t = end_dt.strftime('%m/%d %H:%M') if start_dt.date() != end_dt.date() else end_dt.strftime('%H:%M')
-            df.at[employee_display_name, col_name] = f"{start_t}～{end_t}"
+            df.loc[user_id, col_name] = f"{start_t}～{end_t}"
+    
+    # 表示のためにインデックスをリセット
+    df.reset_index(drop=True, inplace=True)
+    df.fillna('', inplace=True) # 空のセルを "" で埋める
 
-    st.dataframe(df, use_container_width=True)
+    # ログインユーザーの行をハイライトする関数
+    def highlight_user(column, name_to_highlight):
+        styles = [''] * len(column)
+        try:
+            # ハイライトしたいユーザー名の位置を見つける
+            idx_pos = column[column == name_to_highlight].index[0]
+            # スタイルを適用（色は薄い青色）
+            styles[idx_pos] = 'background-color: #e6f3ff'
+        except IndexError:
+            pass # ユーザーが見つからない場合は何もしない
+        return styles
 
+    # '従業員名' の列にだけスタイルを適用
+    styled_df = df.style.apply(highlight_user, name_to_highlight=current_user_display_name, subset=['従業員名'])
+
+    # スタイルが適用されたDataFrameを表示（デフォルトのインデックスは非表示）
+    st.dataframe(styled_df, use_container_width=True, hide_index=True)
+    # === 修正箇所 (ここまで) ===
 
 def show_messages_page():
     st.header("メッセージ")
