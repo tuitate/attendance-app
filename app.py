@@ -126,7 +126,6 @@ def update_user_password(user_id, new_password):
         conn.close()
 
 def delete_user(user_id_to_delete):
-    """ユーザーおよび関連するすべてのデータを削除する"""
     conn = get_db_connection()
     try:
         attendance_ids_tuples = conn.execute('SELECT id FROM attendance WHERE user_id = ?', (user_id_to_delete,)).fetchall()
@@ -196,7 +195,6 @@ def broadcast_message_dialog():
                     image_base64 = base64.b64encode(image_bytes).decode()
 
                 add_broadcast_message(message_body, st.session_state.user_company, image_base64)
-
                 st.toast("メッセージを送信しました！", icon="✅")
                 
             else:
@@ -252,7 +250,6 @@ def shift_edit_dialog(target_date):
                 st.session_state.last_shift_start_time = start_datetime.time()
                 st.session_state.last_shift_end_time = end_datetime.time()
                 st.toast("シフトを保存しました！", icon="✅")
-                py_time.sleep(1)
                 st.rerun()
 
     with col2:
@@ -263,7 +260,6 @@ def shift_edit_dialog(target_date):
                 conn.commit()
                 conn.close()
                 st.toast("シフトを削除しました。", icon="🗑️")
-                py_time.sleep(1)
                 st.rerun()
 
 def show_login_register_page():
@@ -1090,9 +1086,9 @@ def display_work_summary():
             now = get_jst_now()
 
             if now > reminder_time and st.session_state.get('last_clock_out_reminder_date') != today_str:
-                add_message(st.session_state.user_id, "⏰ 退勤予定時刻を15分過ぎています。退勤打刻を忘れていませんか？")
+                add_message(st.session_state.user_id, "⏰ 退勤予定時刻を15分過ぎています。速やかに退勤してください。")
                 st.session_state.last_clock_out_reminder_date = today_str
-                st.toast("退勤打刻のリマインダーをメッセージに送信しました。")
+                
 def main():
     """メインのアプリケーションロジック"""
     st.set_page_config(layout="wide")
