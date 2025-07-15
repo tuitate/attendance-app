@@ -449,18 +449,25 @@ def show_shift_management_page():
             st.rerun()
     with col2:
         st.subheader(st.session_state.calendar_date.strftime('%Y年 %m月'), anchor=False, divider='blue')
-    with col3:
+   with col3:
         if st.button("来月"):
             st.session_state.calendar_date += relativedelta(months=1)
+            st.session_state.editing_date = None
             st.rerun()
 
-calendar_key = f"calendar_{st.session_state.calendar_date}_{st.session_state.calendar_force_refresh_key}"
+    # === この行のインデントを確認してください ===
+    # この行は、上の col1, col2, col3 = ... の行と先頭が揃っている必要があります。
     calendar_result = calendar(
         events=events,
         options={"headerToolbar": False, "initialDate": st.session_state.calendar_date.isoformat(), "initialView": "dayGridMonth", "locale": "ja", "selectable": True, "height": "auto"},
         custom_css=".fc-event-title { font-weight: 700; }\n.fc-toolbar-title { font-size: 1.5rem; }\n.fc-view-harness { height: 650px !important; }",
-        key=calendar_key
+        key=f"calendar_{st.session_state.calendar_date}"
     )
+
+    if isinstance(calendar_result, dict):
+        clicked_date = None
+        if 'dateClick' in calendar_result:
+            utc_dt = datetime.fromisoformat(calendar_r
 
         clicked_date = None
         if 'dateClick' in calendar_result:
