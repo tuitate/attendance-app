@@ -1057,3 +1057,6 @@ def main():
             show_messages_page()
         elif page_to_show == "ユーザー情報":
             show_user_info_page()
+
+if __name__ == "__main__":
+    main()
