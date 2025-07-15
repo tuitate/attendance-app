@@ -614,7 +614,13 @@ def show_shift_table_page():
     st.dataframe(styled_df, use_container_width=True, hide_index=True)
 
 def show_messages_page():
-    st.header("全体メッセージ")
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        st.header("全体メッセージ")
+    with col2:
+        if st.button("📝 全社へメッセージを送信する", use_container_width=True, type="primary"):
+            broadcast_message_dialog()
+    st.divider()
 
     conn = get_db_connection()
     messages = conn.execute('SELECT id, content, created_at, file_base64, file_name, file_type, sender_id FROM messages WHERE user_id = ? ORDER BY created_at DESC', (st.session_state.user_id,)).fetchall()
@@ -640,13 +646,13 @@ def show_messages_page():
                             st.session_state.confirming_delete_message_created_at = None
                             st.rerun()
                 else:
-                    col1, col2 = st.columns([4, 1])
-                    with col1:
+                    msg_col1, msg_col2 = st.columns([4, 1])
+                    with msg_col1:
                         created_at_dt = datetime.fromisoformat(msg['created_at'])
                         st.markdown(f"**{created_at_dt.strftime('%Y年%m月%d日 %H:%M')}**")
 
-                    with col2:
-                        is_broadcast = msg['content'].startswith("**【お知らせ】")
+                    with msg_col2:
+                        is_broadcast = msg['content'] and msg['content'].startswith("**【お知らせ】")
                         if is_broadcast and msg['sender_id'] == st.session_state.user_id:
                             if st.button("🗑️ 削除", key=f"delete_{msg['id']}", use_container_width=True):
                                 st.session_state.confirming_delete_message_created_at = msg['created_at']
@@ -673,13 +679,6 @@ def show_messages_page():
     conn.execute('UPDATE messages SET is_read = 1 WHERE user_id = ?', (st.session_state.user_id,))
     conn.commit()
     conn.close()
-
-    st.divider()
-
-    _, col2 = st.columns([0.6, 0.4])
-    with col2:
-        if st.button("📝 全社へメッセージを送信する", use_container_width=True, type="primary"):
-            broadcast_message_dialog()
 
 def show_user_info_page():
     st.header("ユーザー情報")
