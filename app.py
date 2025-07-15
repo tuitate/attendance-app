@@ -722,6 +722,7 @@ def show_direct_message_page():
     """ダイレクトメッセージページの表示ロジック（ピン機能・ソート機能つき）"""
     st.header("ダイレクトメッセージ")
 
+    # --- 1. 必要なデータをDBから取得 ---
     conn = get_db_connection()
     current_user_id = st.session_state.user_id
     
@@ -745,6 +746,7 @@ def show_direct_message_page():
         st.info("メッセージを送る相手がいません。")
         return
 
+    # --- 2. ソート用のユーザー情報リストを作成 ---
     user_info_list = []
     for user in all_users:
         user_id = user['id']
@@ -755,26 +757,28 @@ def show_direct_message_page():
             "last_message_time": datetime.fromisoformat(last_message_times.get(user_id, "1970-01-01T00:00:00+00:00"))
         })
 
+    # --- 3. ユーザーリストをソート (優先順位: 1.ピン留め, 2.未読, 3.最終メッセージ時刻) ---
     sorted_users = sorted(user_info_list, key=lambda u: (u['is_pinned'], u['has_unread'], u['last_message_time']), reverse=True)
 
+    # --- 4. ページレイアウトを2分割 ---
     col1, col2 = st.columns([1, 2])
 
     with col1:
         st.subheader("宛先リスト")
         with st.container(height=600):
             for user in sorted_users:
-                list_item_cols = st.columns([1, 5])
-
+                list_item_cols = st.columns([1, 5], gap="small")
+                
                 with list_item_cols[0]:
                     if user['is_pinned']:
-                        if st.button("📌", key=f"unpin_{user['id']}", help="ピン留めを外す"):
+                        if st.button("📌", key=f"unpin_{user['id']}", help="ピン留めを外す", use_container_width=True):
                             unpin_user(current_user_id, user['id'])
                             st.rerun()
                     else:
-                        if st.button("📍", key=f"pin_{user['id']}", help="ピン留めする"):
+                        if st.button("📍", key=f"pin_{user['id']}", help="ピン留めする", use_container_width=True):
                             pin_user(current_user_id, user['id'])
                             st.rerun()
-
+                
                 with list_item_cols[1]:
                     label = user['name']
                     if user['has_unread']:
@@ -795,7 +799,6 @@ def show_direct_message_page():
                 render_dm_chat_window(selected_user_id, recipient_name)
         else:
             st.info("← 左のリストからメッセージを送る相手を選択してください。")
-
             
 def show_messages_page():
     st.header("全体メッセージ")
