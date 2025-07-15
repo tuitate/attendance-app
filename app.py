@@ -684,7 +684,9 @@ def show_user_registration_page():
     st.info("あなたの会社に新しいユーザーを登録します。")
 
     with st.form("user_registration_form"):
-        company_name = st.text_input("会社名", value=st.session_state.user_company, disabled=True)
+        # 会社名の入力ウィジェットは、単に情報を表示する目的でのみ使用します。
+        # ここでの戻り値は使いません。
+        st.text_input("会社名", value=st.session_state.user_company, disabled=True)
 
         new_name = st.text_input("名前")
         new_position = st.radio("役職", ("役職者", "社員", "バイト"), horizontal=True)
@@ -709,7 +711,11 @@ def show_user_registration_page():
                 error_message = "パスワードは以下の要件を満たす必要があります：\n" + "\n".join(password_errors)
                 st.error(error_message)
             else:
-                if register_user(new_name, new_employee_id, new_password, company_name, new_position):
+                # === 修正点 ===
+                # 登録処理には、ウィジェットからではなく、セッションステートから直接会社名を取得して使用します。
+                # これにより、他のページの状態に影響されることなく、常に正しい会社名が保証されます。
+                company_name_from_session = st.session_state.user_company
+                if register_user(new_name, new_employee_id, new_password, company_name_from_session, new_position):
                     st.success(f"ユーザー「{new_name}」さんを登録しました。")
                     py_time.sleep(2)
                     st.rerun()
