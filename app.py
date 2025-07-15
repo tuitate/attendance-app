@@ -683,32 +683,36 @@ def show_employee_information_page():
     st.header("従業員情報")
     st.info("あなたの会社の全従業員の情報を表示しています。")
 
+    if st.session_state.user_position != "社長":
+        st.error("このページへのアクセス権限がありません。")
+        return
+
     conn = get_db_connection()
     company_name = st.session_state.user_company
 
-    # データベースから従業員情報を取得し、役職の順に並び替えるSQLクエリ
+    # === 修正箇所 ===
+    # ORDER BY句のCASE文を修正し、「社長」が最優先(1)で表示されるように変更
     query = """
     SELECT name, position, employee_id, created_at
     FROM users
     WHERE company = ?
     ORDER BY
         CASE position
-            WHEN '役職者' THEN 1
-            WHEN '社員' THEN 2
-            WHEN 'バイト' THEN 3
-            ELSE 4
+            WHEN '社長' THEN 1
+            WHEN '役職者' THEN 2
+            WHEN '社員' THEN 3
+            WHEN 'バイト' THEN 4
+            ELSE 5
         END,
         id
     """
     
     try:
-        # Pandas DataFrameとしてデータを読み込む
         df = pd.read_sql_query(query, conn, params=(company_name,))
         
         if df.empty:
             st.warning("まだ従業員が登録されていません。")
         else:
-            # 列名を日本語に設定
             df.rename(columns={
                 'name': '名前',
                 'position': '役職',
@@ -716,11 +720,8 @@ def show_employee_information_page():
                 'created_at': '登録日時'
             }, inplace=True)
 
-            # '登録日時'列のフォーマットを整える
-            # ISO形式の文字列をdatetimeオブジェクトに変換し、その後で希望の文字列形式に変換
             df['登録日時'] = pd.to_datetime(df['登録日時']).dt.strftime('%Y年%m月%d日 %H:%M')
             
-            # DataFrameを画面に表示（インデックスは非表示にする）
             st.dataframe(df, use_container_width=True, hide_index=True)
 
     except Exception as e:
