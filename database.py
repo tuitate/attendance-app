@@ -3,20 +3,14 @@ import sqlite3
 DATABASE_NAME = 'attendance.db'
 
 def get_db_connection():
-    """データベース接続を取得する"""
     conn = sqlite3.connect(DATABASE_NAME)
     conn.row_factory = sqlite3.Row
     return conn
 
 def update_db_schema():
-    """
-    データベースのテーブルスキーマをチェックし、必要に応じて列を自動で追加する。
-    これにより、DBファイルを手動で削除する必要がなくなる。
-    """
     conn = get_db_connection()
     cursor = conn.cursor()
-    
-    # --- usersテーブルの更新チェック ---
+
     cursor.execute("PRAGMA table_info(users)")
     user_columns = [row['name'] for row in cursor.fetchall()]
     
@@ -28,7 +22,6 @@ def update_db_schema():
         cursor.execute("ALTER TABLE users ADD COLUMN position TEXT")
         print("Added 'position' column to 'users' table.")
 
-    # --- shiftsテーブルの更新チェック ---
     cursor.execute("PRAGMA table_info(shifts)")
     shift_columns = [row['name'] for row in cursor.fetchall()]
 
@@ -36,11 +29,9 @@ def update_db_schema():
         cursor.execute("ALTER TABLE shifts ADD COLUMN work_date TEXT")
         print("Added 'work_date' column to 'shifts' table.")
 
-    # --- messagesテーブルの更新チェック ---
     cursor.execute("PRAGMA table_info(messages)")
     message_columns = [row['name'] for row in cursor.fetchall()]
 
-    # 新しい列定義
     new_message_columns = {
         "sender_id": "INTEGER",
         "file_base64": "TEXT",
@@ -56,9 +47,6 @@ def update_db_schema():
             except sqlite3.Error as e:
                 print(f"Error adding '{col_name}' column: {e}")
 
-    # 古い'image_base64'列が存在し、新しい'file_base64'列が追加された場合、
-    # データを移行して古い列を削除することも可能ですが、今回はシンプルに追加のみとします。
-
     conn.commit()
     conn.close()
 
@@ -68,7 +56,6 @@ def init_db():
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    # users テーブル
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -81,7 +68,6 @@ def init_db():
         )
     ''')
 
-    # attendance テーブル
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS attendance (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -93,7 +79,6 @@ def init_db():
         )
     ''')
 
-    # breaks テーブル
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS breaks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -104,7 +89,6 @@ def init_db():
         )
     ''')
 
-    # shifts テーブル (work_date列を追加)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS shifts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -116,7 +100,6 @@ def init_db():
         )
     ''')
 
-    # messages テーブル (最新の設計)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -135,13 +118,10 @@ def init_db():
 
     conn.commit()
     conn.close()
-    
-    # テーブル作成後にスキーマの更新も実行する
-    # これにより、既に存在する古いDBも新しい構造に更新される
+
     update_db_schema()
 
 if __name__ == '__main__':
-    # このスクリプトを直接実行したときにDBを初期化する
     print("Initializing database...")
     init_db()
     print("Database initialized successfully.")
