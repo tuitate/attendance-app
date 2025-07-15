@@ -218,69 +218,73 @@ def broadcast_message_dialog():
             else:
                 st.warning("メッセージ内容を入力するか、画像を添付してください。")
 
+def render_shift_edit_form(target_date):
+    """シフト編集フォームをページ内に直接描画する関数"""
+    with st.container(border=True):
+        st.subheader(f"🗓️ {target_date.strftime('%Y年%m月%d日')} のシフト登録・編集")
 
-@st.dialog("シフト登録・編集")
-def shift_edit_dialog(target_date):
-    """シフトを編集するためのポップアップダイアログ"""
-    st.write(f"**{target_date.strftime('%Y年%m月%d日')}** のシフト")
+        conn = get_db_connection()
+        existing_shift = conn.execute(
+            "SELECT id, start_datetime, end_datetime FROM shifts WHERE user_id = ? AND date(start_datetime) = ?",
+            (st.session_state.user_id, target_date.isoformat())
+        ).fetchone()
+        conn.close()
 
-    conn = get_db_connection()
-    existing_shift = conn.execute(
-        "SELECT id, start_datetime, end_datetime FROM shifts WHERE user_id = ? AND date(start_datetime) = ?",
-        (st.session_state.user_id, target_date.isoformat())
-    ).fetchone()
-    conn.close()
+        if existing_shift:
+            default_start = datetime.fromisoformat(existing_shift['start_datetime'])
+            default_end = datetime.fromisoformat(existing_shift['end_datetime'])
+        else:
+            is_overnight = st.session_state.last_shift_start_time > st.session_state.last_shift_end_time
+            default_end_date = target_date + timedelta(days=1) if is_overnight else target_date
+            default_start = datetime.combine(target_date, st.session_state.last_shift_start_time)
+            default_end = datetime.combine(default_end_date, st.session_state.last_shift_end_time)
 
-    if existing_shift:
-        default_start = datetime.fromisoformat(existing_shift['start_datetime'])
-        default_end = datetime.fromisoformat(existing_shift['end_datetime'])
-    else:
-        is_overnight = st.session_state.last_shift_start_time > st.session_state.last_shift_end_time
-        default_end_date = target_date + timedelta(days=1) if is_overnight else target_date
-        default_start = datetime.combine(target_date, st.session_state.last_shift_start_time)
-        default_end = datetime.combine(default_end_date, st.session_state.last_shift_end_time)
+        col1, col2 = st.columns(2)
+        with col1:
+            start_date_input = st.date_input("出勤日", value=default_start.date(), key=f"sd_{target_date}")
+            end_date_input = st.date_input("退勤日", value=default_end.date(), key=f"ed_{target_date}")
+        with col2:
+            start_time_input = st.time_input("出勤時刻", value=default_start.time(), key=f"st_{target_date}")
+            end_time_input = st.time_input("退勤時刻", value=default_end.time(), key=f"et_{target_date}")
 
-    col1, col2 = st.columns(2)
-    with col1:
-        start_date_input = st.date_input("出勤日", value=default_start.date())
-        end_date_input = st.date_input("退勤日", value=default_end.date())
-    with col2:
-        start_time_input = st.time_input("出勤時刻", value=default_start.time())
-        end_time_input = st.time_input("退勤時刻", value=default_end.time())
+        start_datetime = datetime.combine(start_date_input, start_time_input)
+        end_datetime = datetime.combine(end_date_input, end_time_input)
 
-    start_datetime = datetime.combine(start_date_input, start_time_input)
-    end_datetime = datetime.combine(end_date_input, end_time_input)
-
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("登録・更新", use_container_width=True, type="primary"):
-            if start_datetime >= end_datetime:
-                st.error("出勤日時は退勤日時より前に設定してください。")
-            else:
-                conn = get_db_connection()
-                if existing_shift:
-                    conn.execute('UPDATE shifts SET start_datetime = ?, end_datetime = ? WHERE id = ?',
-                                 (start_datetime.isoformat(), end_datetime.isoformat(), existing_shift['id']))
+        btn_col1, btn_col2, btn_col3 = st.columns([2,2,1])
+        with btn_col1:
+            if st.button("登録・更新", use_container_width=True, type="primary", key=f"save_{target_date}"):
+                if start_datetime >= end_datetime:
+                    st.error("出勤日時は退勤日時より前に設定してください。")
                 else:
-                    conn.execute('INSERT INTO shifts (user_id, start_datetime, end_datetime) VALUES (?, ?, ?)',
-                                 (st.session_state.user_id, start_datetime.isoformat(), end_datetime.isoformat()))
-                conn.commit()
-                conn.close()
-                st.session_state.last_shift_start_time = start_datetime.time()
-                st.session_state.last_shift_end_time = end_datetime.time()
-                st.toast("シフトを保存しました！", icon="✅")
-                st.session_state.calendar_force_refresh_key += 1
-                st.rerun()
+                    conn = get_db_connection()
+                    if existing_shift:
+                        conn.execute('UPDATE shifts SET start_datetime = ?, end_datetime = ? WHERE id = ?',
+                                     (start_datetime.isoformat(), end_datetime.isoformat(), existing_shift['id']))
+                    else:
+                        conn.execute('INSERT INTO shifts (user_id, start_datetime, end_datetime) VALUES (?, ?, ?)',
+                                     (st.session_state.user_id, start_datetime.isoformat(), end_datetime.isoformat()))
+                    conn.commit()
+                    conn.close()
+                    st.session_state.last_shift_start_time = start_datetime.time()
+                    st.session_state.last_shift_end_time = end_datetime.time()
+                    st.toast("シフトを保存しました！", icon="✅")
+                    st.session_state.editing_date = None # フォームを閉じる
+                    st.rerun() # ページを再実行して即時更新
 
-    with col2:
-        if st.button("削除", use_container_width=True):
+        with btn_col2:
             if existing_shift:
-                conn = get_db_connection()
-                conn.execute('DELETE FROM shifts WHERE id = ?', (existing_shift['id'],))
-                conn.commit()
-                conn.close()
-                st.toast("シフトを削除しました。", icon="🗑️")
-                st.session_state.calendar_force_refresh_key += 1
+                if st.button("削除", use_container_width=True, key=f"del_{target_date}"):
+                    conn = get_db_connection()
+                    conn.execute('DELETE FROM shifts WHERE id = ?', (existing_shift['id'],))
+                    conn.commit()
+                    conn.close()
+                    st.toast("シフトを削除しました。", icon="🗑️")
+                    st.session_state.editing_date = None # フォームを閉じる
+                    st.rerun() # ページを再実行して即時更新
+        
+        with btn_col3:
+            if st.button("閉じる", use_container_width=True, key=f"close_{target_date}"):
+                st.session_state.editing_date = None # フォームを閉じる
                 st.rerun()
 
 def show_login_register_page():
@@ -425,7 +429,12 @@ def show_timecard_page():
 
 def show_shift_management_page():
     st.header("シフト管理")
-    st.info("カレンダーの日付または登録済みのシフトをクリックして編集できます。シフトの反映はページを変更するか、月を変更することで反映されます。")
+    # 説明文を新しい動作に合わせて変更
+    st.info("カレンダーの日付または登録済みのシフトをクリックして、下に表示されるフォームで編集してください。")
+
+    # セッションに編集用日付がなければNoneに初期化
+    if 'editing_date' not in st.session_state:
+        st.session_state.editing_date = None
 
     conn = get_db_connection()
     shifts = conn.execute('SELECT id, start_datetime, end_datetime FROM shifts WHERE user_id = ?', (st.session_state.user_id,)).fetchall()
@@ -446,17 +455,16 @@ def show_shift_management_page():
     with col1:
         if st.button("先月"):
             st.session_state.calendar_date -= relativedelta(months=1)
+            st.session_state.editing_date = None # 月を変更したらフォームは閉じる
             st.rerun()
     with col2:
         st.subheader(st.session_state.calendar_date.strftime('%Y年 %m月'), anchor=False, divider='blue')
-   with col3:
+    with col3:
         if st.button("来月"):
             st.session_state.calendar_date += relativedelta(months=1)
-            st.session_state.editing_date = None
+            st.session_state.editing_date = None # 月を変更したらフォームは閉じる
             st.rerun()
 
-    # === この行のインデントを確認してください ===
-    # この行は、上の col1, col2, col3 = ... の行と先頭が揃っている必要があります。
     calendar_result = calendar(
         events=events,
         options={"headerToolbar": False, "initialDate": st.session_state.calendar_date.isoformat(), "initialView": "dayGridMonth", "locale": "ja", "selectable": True, "height": "auto"},
@@ -464,15 +472,14 @@ def show_shift_management_page():
         key=f"calendar_{st.session_state.calendar_date}"
     )
 
+    # カレンダーがクリックされた際の処理
     if isinstance(calendar_result, dict):
         clicked_date = None
-        if 'dateClick' in calendar_result:
-            utc_dt = datetime.fromisoformat(calendar_r
-
-        clicked_date = None
+        # 日付エリアをクリック
         if 'dateClick' in calendar_result:
             utc_dt = datetime.fromisoformat(calendar_result['dateClick']['date'].replace('Z', '+00:00'))
             clicked_date = utc_dt.astimezone(timezone(timedelta(hours=9))).date()
+        # 既存のシフト（イベント）をクリック
         elif 'eventClick' in calendar_result:
             start_str = calendar_result['eventClick']['event']['start'].split('T')[0]
             clicked_date = date.fromisoformat(start_str)
@@ -480,61 +487,16 @@ def show_shift_management_page():
         if clicked_date:
             if clicked_date < date.today():
                 st.warning("過去の日付のシフトは変更できません。")
+                st.session_state.editing_date = None # フォームを閉じる
             else:
-                shift_edit_dialog(clicked_date)
+                # 編集する日付をセッションに保存し、再読み込みしてフォームを表示
+                st.session_state.editing_date = clicked_date
+                st.rerun()
 
-    if st.session_state.clicked_date_str:
-        edit_date = date.fromisoformat(st.session_state.clicked_date_str)
-        if edit_date < date.today():
-            st.warning("過去の日付のシフトは変更できません。")
-        else:
-            with st.container(border=True):
-                st.subheader(f"🗓️ {edit_date.strftime('%Y年%m月%d日')} のシフト登録・編集")
-
-                conn = get_db_connection()
-                existing_shift = conn.execute("SELECT id, start_datetime, end_datetime FROM shifts WHERE user_id = ? AND date(start_datetime) = ?", (st.session_state.user_id, edit_date.isoformat())).fetchone()
-                conn.close()
-
-                default_start = datetime.combine(edit_date, st.session_state.last_shift_start_time)
-                default_end = datetime.combine(edit_date, st.session_state.last_shift_end_time)
-                if existing_shift:
-                    default_start = datetime.fromisoformat(existing_shift['start_datetime'])
-                    default_end = datetime.fromisoformat(existing_shift['end_datetime'])
-
-                with st.form(key=f"shift_form_{edit_date.isoformat()}"):
-                    c1, c2 = st.columns(2)
-                    with c1:
-                        start_date_input = st.date_input("出勤日", value=default_start.date())
-                        end_date_input = st.date_input("退勤日", value=default_end.date())
-                    with c2:
-                        start_time_input = st.time_input("出勤時刻", value=default_start.time())
-                        end_time_input = st.time_input("退勤時刻", value=default_end.time())
-                    start_datetime = datetime.combine(start_date_input, start_time_input)
-                    end_datetime = datetime.combine(end_date_input, end_time_input)
-
-                    c1, c2 = st.columns(2)
-                    with c1:
-                        if st.form_submit_button("登録・更新", use_container_width=True, type="primary"):
-                            if start_datetime >= end_datetime:
-                                st.error("出勤日時は退勤日時より前に設定してください。")
-                            else:
-                                st.session_state.shift_confirmation_action = 'save'
-                                st.session_state.shift_confirmation_details = {
-                                    'start_datetime': start_datetime,
-                                    'end_datetime': end_datetime,
-                                    'existing_shift_id': existing_shift['id'] if existing_shift else None
-                                }
-                                st.rerun()
-                    with c2:
-                        if st.form_submit_button("削除", use_container_width=True):
-                            if existing_shift:
-                                st.session_state.shift_confirmation_action = 'delete'
-                                st.session_state.shift_confirmation_details = {
-                                    'existing_shift_id': existing_shift['id']
-                                }
-                                st.rerun()
-                            else:
-                                st.toast("削除するシフトがありません。", icon="🤷")
+    # 編集対象の日付がセッションにあれば、編集フォームを描画
+    if st.session_state.editing_date:
+        # render_shift_edit_formを呼び出す（この関数は前の回答で提示したものを使用）
+        render_shift_edit_form(st.session_state.editing_date)
 
 def show_shift_table_page():
     st.header("月間シフト表")
