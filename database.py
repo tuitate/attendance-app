@@ -3,7 +3,6 @@ import sqlite3
 DATABASE_NAME = 'attendance.db'
 
 def get_db_connection():
-    """データベース接続を取得する"""
     conn = sqlite3.connect(DATABASE_NAME)
     conn.row_factory = sqlite3.Row
     return conn
@@ -46,7 +45,6 @@ def update_db_schema():
 
 
 def init_db():
-    """データベースを初期化し、全てのテーブルを最新の設計で作成する"""
     conn = get_db_connection()
     cursor = conn.cursor()
 
