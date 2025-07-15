@@ -57,6 +57,7 @@ def add_direct_message(sender_id, recipient_id, content, file_base64=None, file_
 
 def render_dm_chat_window(recipient_id, recipient_name):
     st.subheader(f"💬 {recipient_name}さんとのメッセージ")
+    
     current_user_id = st.session_state.user_id
     conn = get_db_connection()
     try:
@@ -84,6 +85,9 @@ def render_dm_chat_window(recipient_id, recipient_name):
 
         for msg in messages:
             role = "user" if msg['sender_id'] == current_user_id else "assistant"
+
+            created_at_dt = datetime.fromisoformat(msg['created_at'])
+
             with st.chat_message(role):
                 if msg['content']:
                     st.markdown(msg['content'])
@@ -99,11 +103,10 @@ def render_dm_chat_window(recipient_id, recipient_name):
                             mime=msg['file_type']
                         )
 
-    created_at_dt = datetime.fromisoformat(msg['created_at'])
-    st.caption(created_at_dt.strftime('%H:%M'))
+                st.caption(created_at_dt.strftime('%H:%M'))
 
     with st.container():
-        message_input = st.text_input("メッセージを入力...", key=f"dm_input_{recipient_id}")
+        message_input = st.text_input("メッセージを入力...", key=f"dm_input_{recipient_id}", label_visibility="collapsed")
         file_input = st.file_uploader("ファイルを添付", key=f"dm_file_{recipient_id}", label_visibility="collapsed")
         
         if st.button("送信", key=f"dm_send_{recipient_id}"):
@@ -117,6 +120,7 @@ def render_dm_chat_window(recipient_id, recipient_name):
                 
                 add_direct_message(current_user_id, recipient_id, message_input, file_base64, file_name, file_type)
                 st.rerun()
+
 
 def delete_broadcast_message(created_at_iso):
     conn = get_db_connection()
