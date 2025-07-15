@@ -919,6 +919,8 @@ def show_employee_information_page():
         st.error("このページへのアクセス権限がありません。")
         return
 
+    confirmation_placeholder = st.empty()
+
     if st.session_state.get('confirming_delete_user_id'):
         user_to_delete_id = st.session_state.confirming_delete_user_id
         conn = get_db_connection()
