@@ -693,7 +693,33 @@ def show_shift_table_page():
     styled_df = df.style.apply(highlight_user, name_to_highlight=current_user_display_name, subset=['従業員名'])
     st.dataframe(styled_df, use_container_width=True, hide_index=True)
 
+def pin_user(user_id, user_to_pin_id):
+    """ユーザーをピン留めする"""
+    conn = get_db_connection()
+    try:
+        conn.execute("INSERT OR IGNORE INTO pinned_users (user_id, pinned_user_id) VALUES (?, ?)",
+                     (user_id, user_to_pin_id))
+        conn.commit()
+    except sqlite3.Error as e:
+        print(f"Error pinning user: {e}")
+    finally:
+        conn.close()
+
+def unpin_user(user_id, user_to_unpin_id):
+    """ユーザーのピン留めを外す"""
+    conn = get_db_connection()
+    try:
+        conn.execute("DELETE FROM pinned_users WHERE user_id = ? AND pinned_user_id = ?",
+                     (user_id, user_to_unpin_id))
+        conn.commit()
+    except sqlite3.Error as e:
+        print(f"Error unpinning user: {e}")
+    finally:
+        conn.close()
+
+
 def show_direct_message_page():
+    """ダイレクトメッセージページの表示ロジック（ピン機能・ソート機能つき）"""
     st.header("ダイレクトメッセージ")
 
     conn = get_db_connection()
@@ -702,39 +728,59 @@ def show_direct_message_page():
     all_users = conn.execute("SELECT id, name FROM users WHERE company = ? AND id != ?", 
                              (st.session_state.user_company, current_user_id)).fetchall()
     
-    unread_senders_rows = conn.execute("""
-        SELECT DISTINCT sender_id FROM messages
-        WHERE user_id = ? AND is_read = 0 AND message_type = 'DIRECT'
-    """, (current_user_id,)).fetchall()
+    pinned_rows = conn.execute("SELECT pinned_user_id FROM pinned_users WHERE user_id = ?", (current_user_id,)).fetchall()
+    pinned_user_ids = {row['pinned_user_id'] for row in pinned_rows}
+
+    unread_senders_rows = conn.execute("SELECT DISTINCT sender_id FROM messages WHERE user_id = ? AND is_read = 0 AND message_type = 'DIRECT'", (current_user_id,)).fetchall()
     unread_sender_ids = {row['sender_id'] for row in unread_senders_rows}
+
+    last_message_times_rows = conn.execute("""
+        SELECT CASE WHEN sender_id = :uid THEN user_id ELSE sender_id END as partner, MAX(created_at) as last_time
+        FROM messages WHERE (sender_id = :uid OR user_id = :uid) AND message_type = 'DIRECT' GROUP BY partner
+    """, {"uid": current_user_id}).fetchall()
+    last_message_times = {row['partner']: row['last_time'] for row in last_message_times_rows}
     conn.close()
 
     if not all_users:
         st.info("メッセージを送る相手がいません。")
         return
 
-    unread_users = []
-    read_users = []
+    user_info_list = []
     for user in all_users:
-        if user['id'] in unread_sender_ids:
-            unread_users.append(user)
-        else:
-            read_users.append(user)
-    
-    sorted_users = unread_users + read_users
+        user_id = user['id']
+        user_info_list.append({
+            "id": user_id, "name": user['name'],
+            "is_pinned": user_id in pinned_user_ids,
+            "has_unread": user_id in unread_sender_ids,
+            "last_message_time": datetime.fromisoformat(last_message_times.get(user_id, "1970-01-01T00:00:00+00:00"))
+        })
+
+    sorted_users = sorted(user_info_list, key=lambda u: (u['is_pinned'], u['has_unread'], u['last_message_time']), reverse=True)
+
     col1, col2 = st.columns([1, 2])
 
     with col1:
         st.subheader("宛先リスト")
         with st.container(height=600):
             for user in sorted_users:
-                label = user['name']
-                if user['id'] in unread_sender_ids:
-                    label = f"🔴 {label}"
-
-                if st.button(label, key=f"select_dm_{user['id']}", use_container_width=True):
-                    st.session_state.dm_selected_user_id = user['id']
-                    st.rerun()
+                list_item_cols = st.columns([5, 1])
+                with list_item_cols[0]:
+                    label = user['name']
+                    if user['has_unread']:
+                        label = f"🔴 {label}"
+                    if st.button(label, key=f"select_dm_{user['id']}", use_container_width=True):
+                        st.session_state.dm_selected_user_id = user['id']
+                        st.rerun()
+                
+                with list_item_cols[1]:
+                    if user['is_pinned']:
+                        if st.button("📌", key=f"unpin_{user['id']}", help="ピン留めを外す"):
+                            unpin_user(current_user_id, user['id'])
+                            st.rerun()
+                    else:
+                        if st.button("📍", key=f"pin_{user['id']}", help="ピン留めする"):
+                            pin_user(current_user_id, user['id'])
+                            st.rerun()
 
     with col2:
         selected_user_id = st.session_state.get('dm_selected_user_id')
@@ -744,11 +790,11 @@ def show_direct_message_page():
                 if user['id'] == selected_user_id:
                     recipient_name = user['name']
                     break
-            
             if recipient_name:
                 render_dm_chat_window(selected_user_id, recipient_name)
         else:
             st.info("← 左のリストからメッセージを送る相手を選択してください。")
+
             
 def show_messages_page():
     st.header("全体メッセージ")
