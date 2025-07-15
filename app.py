@@ -910,6 +910,26 @@ def show_user_info_page():
                         else:
                             st.error("パスワードの変更中にエラーが発生しました。")
 
+
+@st.dialog("従業員削除の確認")
+def confirm_delete_user_dialog(user_id, user_name):
+    """従業員を削除する前に確認ダイアログを表示する"""
+    st.warning(f"本当に従業員「{user_name}」さんを削除しますか？\n\nこの操作は元に戻せません。関連するすべての勤怠記録やシフト情報も削除されます。")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("はい、削除します", use_container_width=True, type="primary"):
+            if delete_user(user_id):
+                st.toast(f"「{user_name}」さんを削除しました。", icon="✅")
+            else:
+                st.error("削除中にエラーが発生しました。")
+            # ページを再実行して、ダイアログを閉じ、従業員リストを更新する
+            st.rerun()
+    with col2:
+        if st.button("いいえ", use_container_width=True):
+            # 何もせずダイアログを閉じる
+            st.rerun()
+
 def show_employee_information_page():
     """社長・役職者専用の従業員情報閲覧・削除ページ"""
     st.header("従業員情報")
@@ -920,41 +940,9 @@ def show_employee_information_page():
         st.error("このページへのアクセス権限がありません。")
         return
 
-    # --- 確認メッセージ用のプレースホルダーをページ上部に用意 ---
-    confirmation_placeholder = st.empty()
+    # === これまでの削除確認ロジックは不要になったため削除 ===
 
-    # --- 削除確認のロジック ---
-    if st.session_state.get('confirming_delete_user_id'):
-        user_to_delete_id = st.session_state.confirming_delete_user_id
-        conn = get_db_connection()
-        user_to_delete_info = conn.execute('SELECT name FROM users WHERE id = ?', (user_to_delete_id,)).fetchone()
-        conn.close()
-
-        if user_to_delete_info:
-            user_to_delete_name = user_to_delete_info['name']
-            
-            # プレースホルダーの中に確認メッセージとボタンを表示
-            with confirmation_placeholder.container(border=True):
-                st.warning(f"本当に従業員「{user_to_delete_name}」さんを削除しますか？\n\nこの操作は元に戻せません。関連するすべての勤怠記録やシフト情報も削除されます。")
-                c1, c2 = st.columns(2)
-                with c1:
-                    if st.button("はい、削除します", key=f"confirm_delete_{user_to_delete_id}", type="primary", use_container_width=True):
-                        if delete_user(user_to_delete_id):
-                            st.success(f"「{user_to_delete_name}」さんを削除しました。")
-                        else:
-                            st.error("削除中にエラーが発生しました。")
-                        st.session_state.confirming_delete_user_id = None
-                        st.rerun()
-                with c2:
-                    if st.button("いいえ", key=f"cancel_delete_{user_to_delete_id}", use_container_width=True):
-                        st.session_state.confirming_delete_user_id = None
-                        st.rerun()
-        else:
-            # 削除対象のユーザーが見つからなかった場合
-            st.session_state.confirming_delete_user_id = None
-            st.rerun() # 念のため再実行してプレースホルダーをクリア
-
-    # --- 従業員リストの表示ロジック ---
+    # === 従業員リストの表示ロジック ===
     conn = get_db_connection()
     company_name = st.session_state.user_company
     query = """
@@ -977,6 +965,7 @@ def show_employee_information_page():
         if not all_users:
             st.warning("まだ従業員が登録されていません。")
         else:
+            # ヘッダーを表示
             header_cols = st.columns([2, 2, 2, 3, 1])
             header_cols[0].write("**名前**")
             header_cols[1].write("**役職**")
@@ -984,6 +973,7 @@ def show_employee_information_page():
             header_cols[3].write("**登録日時**")
             st.divider()
 
+            # 各従業員情報をループで表示
             for user in all_users:
                 cols = st.columns([2, 2, 2, 3, 1])
                 cols[0].write(user['name'])
@@ -991,11 +981,14 @@ def show_employee_information_page():
                 cols[2].write(user['employee_id'])
                 cols[3].write(datetime.fromisoformat(user['created_at']).strftime('%Y年%m月%d日 %H:%M'))
 
+                # 自分自身は削除できないようにボタンを表示しない
                 if user['id'] != st.session_state.user_id:
                     with cols[4]:
+                        # === ここからが修正箇所 ===
+                        # 削除ボタンを押したら、新しいダイアログ関数を呼び出す
                         if st.button("削除", key=f"delete_{user['id']}", use_container_width=True):
-                            st.session_state.confirming_delete_user_id = user['id']
-                            st.rerun()
+                            confirm_delete_user_dialog(user['id'], user['name'])
+                        # === ここまでが修正箇所 ===
                 st.divider()
 
     except Exception as e:
