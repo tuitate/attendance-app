@@ -90,6 +90,7 @@ def init_session_state():
         'confirmation_action': None,
         'page': "タイムカード",
         'last_break_reminder_date': None,
+        'last_clock_out_reminder_date': None,
         'calendar_date': date.today(),
         'clicked_date_str': None,
         'last_shift_start_time': time(9, 0),
@@ -1012,6 +1013,16 @@ def display_work_summary():
             st.metric("総勤務時間", "00:00")
 
         st.divider()
+
+if shift and not att['clock_out']:
+            end_dt = datetime.fromisoformat(shift['end_datetime'])
+            reminder_time = end_dt + timedelta(minutes=15)
+            now = get_jst_now()
+
+            if now > reminder_time and st.session_state.get('last_clock_out_reminder_date') != today_str:
+                add_message(st.session_state.user_id, "⏰ 退勤予定時刻を15分過ぎています。退勤してください。")
+                st.session_state.last_clock_out_reminder_date = today_str
+                st.toast("退勤打刻のリマインダーをメッセージに送信しました。")
 
 def main():
     """メインのアプリケーションロジック"""
