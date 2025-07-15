@@ -1210,7 +1210,6 @@ def display_work_summary():
                 st.session_state.last_clock_out_reminder_date = today_str
                 
 def main():
-    """メインのアプリケーションロジック"""
     st.set_page_config(layout="wide")
 
     init_db()
@@ -1222,10 +1221,16 @@ def main():
         st.sidebar.title("メニュー")
         st.sidebar.markdown(f"**名前:** {st.session_state.user_name}")
         st.sidebar.markdown(f"**従業員ID:** {get_user_employee_id(st.session_state.user_id)}")
-
         conn = get_db_connection()
-        broadcast_unread_count = conn.execute("SELECT COUNT(*) FROM messages WHERE user_id = ? AND is_read = 0 AND message_type IN ('BROADCAST', 'SYSTEM')", (st.session_state.user_id,)).fetchone()[0]
-        dm_unread_count = conn.execute("SELECT COUNT(*) FROM messages WHERE user_id = ? AND is_read = 0 AND message_type = 'DIRECT'", (st.session_state.user_id,)).fetchone()[0]
+        current_user_id = st.session_state.user_id
+
+        broadcast_unread_count = conn.execute("SELECT COUNT(*) FROM messages WHERE user_id = ? AND is_read = 0 AND message_type IN ('BROADCAST', 'SYSTEM')", (current_user_id,)).fetchone()[0]
+
+        unread_dm_senders = conn.execute("""
+            SELECT DISTINCT u.id, u.name
+            FROM messages m JOIN users u ON m.sender_id = u.id
+            WHERE m.user_id = ? AND m.is_read = 0 AND m.message_type = 'DIRECT'
+        """, (current_user_id,)).fetchall()
         conn.close()
 
         broadcast_message_label = "全体メッセージ"
@@ -1233,7 +1238,7 @@ def main():
             broadcast_message_label = f"全体メッセージ 🔴 ({broadcast_unread_count})"
 
         dm_label = "ダイレクトメッセージ"
-        if dm_unread_count > 0:
+        if unread_dm_senders:
             dm_label = "ダイレクトメッセージ 🔴"
 
         page_options = ["タイムカード", "シフト管理", "シフト表", "出勤状況", broadcast_message_label, dm_label, "ユーザー情報"]
@@ -1261,6 +1266,16 @@ def main():
             for key in st.session_state.keys():
                 del st.session_state[key]
             st.rerun()
+
+        if unread_dm_senders:
+            with st.container(border=True):
+                st.info("🔔 新着メッセージがあります！")
+                for sender in unread_dm_senders:
+                    if st.button(f"📩 **{sender['name']}さん**から新しいメッセージが届いています。", key=f"dm_notification_{sender['id']}", use_container_width=True):
+                        st.session_state.page = "ダイレクトメッセージ"
+                        st.session_state.dm_selected_user_id = sender['id']
+                        st.rerun()
+            st.divider()
 
         page_to_show = st.session_state.get('page', "タイムカード")
 
