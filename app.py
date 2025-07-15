@@ -97,6 +97,7 @@ def init_session_state():
         'last_shift_end_time': time(17, 0),
         'confirming_delete_message_created_at': None,
         'clock_in_error': None,
+        'confirming_delete_user_id': None,
     }
     for key, default_value in defaults.items():
         if key not in st.session_state:
@@ -135,6 +136,36 @@ def update_user_password(user_id, new_password):
         return True
     except sqlite3.Error as e:
         st.error(f"データベースエラー: {e}")
+        return False
+    finally:
+        conn.close()
+
+def delete_user(user_id_to_delete):
+    """ユーザーおよび関連するすべてのデータを削除する"""
+    conn = get_db_connection()
+    try:
+        # ユーザーに関連する勤怠IDを取得
+        attendance_ids_tuples = conn.execute('SELECT id FROM attendance WHERE user_id = ?', (user_id_to_delete,)).fetchall()
+        attendance_ids = [item['id'] for item in attendance_ids_tuples]
+
+        if attendance_ids:
+            # 休憩記録を削除
+            placeholders = ','.join('?' for _ in attendance_ids)
+            conn.execute(f'DELETE FROM breaks WHERE attendance_id IN ({placeholders})', attendance_ids)
+
+        # 関連データを削除
+        conn.execute('DELETE FROM attendance WHERE user_id = ?', (user_id_to_delete,))
+        conn.execute('DELETE FROM shifts WHERE user_id = ?', (user_id_to_delete,))
+        conn.execute('DELETE FROM messages WHERE user_id = ?', (user_id_to_delete,))
+        
+        # 最後にユーザー本体を削除
+        conn.execute('DELETE FROM users WHERE id = ?', (user_id_to_delete,))
+        
+        conn.commit()
+        return True
+    except sqlite3.Error as e:
+        print(f"ユーザー削除中にエラーが発生しました: {e}")
+        conn.rollback() # エラーが発生した場合は変更を元に戻す
         return False
     finally:
         conn.close()
