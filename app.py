@@ -13,7 +13,6 @@ import base64
 
 from database import get_db_connection, init_db
 
-# --- Helper Functions ---
 def hash_password(password):
     """パスワードをSHA-256でハッシュ化する"""
     return hashlib.sha256(password.encode()).hexdigest()
@@ -75,7 +74,6 @@ def validate_password(password):
         errors.append("・数字を1文字以上含める必要があります。")
     return errors
 
-# --- Session State Initialization ---
 def init_session_state():
     """セッションステートを初期化する"""
     defaults = {
@@ -103,7 +101,6 @@ def init_session_state():
         if key not in st.session_state:
             st.session_state[key] = default_value
 
-# --- Database Functions ---
 def get_user(employee_id):
     """従業員IDでユーザー情報を取得"""
     conn = get_db_connection()
@@ -144,28 +141,23 @@ def delete_user(user_id_to_delete):
     """ユーザーおよび関連するすべてのデータを削除する"""
     conn = get_db_connection()
     try:
-        # ユーザーに関連する勤怠IDを取得
         attendance_ids_tuples = conn.execute('SELECT id FROM attendance WHERE user_id = ?', (user_id_to_delete,)).fetchall()
         attendance_ids = [item['id'] for item in attendance_ids_tuples]
 
         if attendance_ids:
-            # 休憩記録を削除
             placeholders = ','.join('?' for _ in attendance_ids)
             conn.execute(f'DELETE FROM breaks WHERE attendance_id IN ({placeholders})', attendance_ids)
 
-        # 関連データを削除
         conn.execute('DELETE FROM attendance WHERE user_id = ?', (user_id_to_delete,))
         conn.execute('DELETE FROM shifts WHERE user_id = ?', (user_id_to_delete,))
         conn.execute('DELETE FROM messages WHERE user_id = ?', (user_id_to_delete,))
-        
-        # 最後にユーザー本体を削除
         conn.execute('DELETE FROM users WHERE id = ?', (user_id_to_delete,))
         
         conn.commit()
         return True
     except sqlite3.Error as e:
         print(f"ユーザー削除中にエラーが発生しました: {e}")
-        conn.rollback() # エラーが発生した場合は変更を元に戻す
+        conn.rollback()
         return False
     finally:
         conn.close()
@@ -198,7 +190,6 @@ def get_user_employee_id(user_id):
     conn.close()
     return employee_id_row['employee_id'] if employee_id_row else "N/A"
 
-# 変更・追加：`st.rerun()` と `py_time.sleep()` を削除
 @st.dialog("全体メッセージを送信")
 def broadcast_message_dialog():
     """管理者（社長・役職者）が全体メッセージを送信するためのダイアログ"""
@@ -277,7 +268,7 @@ def shift_edit_dialog(target_date):
                 st.session_state.last_shift_start_time = start_datetime.time()
                 st.session_state.last_shift_end_time = end_datetime.time()
                 st.toast("シフトを保存しました！", icon="✅")
-                py_time.sleep(1) # toastメッセージを読ませるための短い待機
+                py_time.sleep(1)
                 st.rerun()
 
     with col2:
@@ -288,10 +279,9 @@ def shift_edit_dialog(target_date):
                 conn.commit()
                 conn.close()
                 st.toast("シフトを削除しました。", icon="🗑️")
-                py_time.sleep(1) # toastメッセージを読ませるための短い待機
+                py_time.sleep(1)
                 st.rerun()
 
-# --- UI Components ---
 def show_login_register_page():
     st.header("ログインまたは新規登録")
     menu = ["ログイン", "新規登録"]
@@ -367,9 +357,6 @@ def show_timecard_page():
 
     button_placeholder = st.empty()
     with button_placeholder.container():
-        # === 修正点 1 ===
-        # エラーメッセージがあれば表示する。すぐに消す処理は削除。
-        # これにより、次の有効なアクションまでメッセージが残る。
         if st.session_state.get('clock_in_error'):
             st.warning(st.session_state.clock_in_error)
 
@@ -409,8 +396,6 @@ def show_timecard_page():
                     if error_msg:
                         st.session_state.clock_in_error = error_msg
                     else:
-                        # === 修正点 2 ===
-                        # チェックを通過した場合、エラーメッセージを消去する
                         st.session_state.clock_in_error = None
                         st.session_state.confirmation_action = 'clock_in'
                     
@@ -601,9 +586,6 @@ def show_shift_table_page():
         "社長": "👑", "役職者": "🥈", "社員": "🥉", "バイト": "👦🏿"
     }
 
-    # === 修正箇所 (ここから) ===
-
-    # ログイン中のユーザーの表示名を特定
     current_user_icon = position_icons.get(st.session_state.user_position, '')
     current_user_display_name = f"{current_user_icon} {st.session_state.user_name}"
 
@@ -612,7 +594,6 @@ def show_shift_table_page():
         axis=1
     )
 
-    # DataFrameを作成し、「従業員名」を通常の列として設定
     df = pd.DataFrame()
     df['従業員名'] = users['display_name']
 
@@ -623,7 +604,6 @@ def show_shift_table_page():
         col_name = f"{day_str} ({weekday_str})"
         df[col_name] = ""
 
-    # スタイリングのために、一時的にuser_idをインデックスに設定
     df.set_index(users['id'], inplace=True)
 
     for _, row in shifts.iterrows():
@@ -637,29 +617,21 @@ def show_shift_table_page():
             start_t = start_dt.strftime('%H:%M')
             end_t = end_dt.strftime('%m/%d %H:%M') if start_dt.date() != end_dt.date() else end_dt.strftime('%H:%M')
             df.loc[user_id, col_name] = f"{start_t}～{end_t}"
-    
-    # 表示のためにインデックスをリセット
-    df.reset_index(drop=True, inplace=True)
-    df.fillna('', inplace=True) # 空のセルを "" で埋める
 
-    # ログインユーザーの行をハイライトする関数
+    df.reset_index(drop=True, inplace=True)
+    df.fillna('', inplace=True)
+
     def highlight_user(column, name_to_highlight):
         styles = [''] * len(column)
         try:
-            # ハイライトしたいユーザー名の位置を見つける
             idx_pos = column[column == name_to_highlight].index[0]
-            # スタイルを適用（色は薄い青色）
             styles[idx_pos] = 'background-color: rgba(230, 243, 255, 0.6)'
         except IndexError:
-            pass # ユーザーが見つからない場合は何もしない
+            pass
         return styles
 
-    # '従業員名' の列にだけスタイルを適用
     styled_df = df.style.apply(highlight_user, name_to_highlight=current_user_display_name, subset=['従業員名'])
-
-    # スタイルが適用されたDataFrameを表示（デフォルトのインデックスは非表示）
     st.dataframe(styled_df, use_container_width=True, hide_index=True)
-    # === 修正箇所 (ここまで) ===
 
 def show_messages_page():
     st.header("メッセージ")
@@ -764,12 +736,10 @@ def show_employee_information_page():
     st.header("従業員情報")
     st.info("あなたの会社の全従業員の情報を表示しています。")
 
-    # アクセス権限のチェック
     if st.session_state.user_position not in ["社長", "役職者"]:
         st.error("このページへのアクセス権限がありません。")
         return
 
-    # === 削除確認のダイアログ表示ロジック ===
     if st.session_state.get('confirming_delete_user_id'):
         user_to_delete_id = st.session_state.confirming_delete_user_id
         conn = get_db_connection()
@@ -793,11 +763,8 @@ def show_employee_information_page():
                     st.session_state.confirming_delete_user_id = None
                     st.rerun()
         else:
-            # 削除対象が見つからなかった場合
             st.session_state.confirming_delete_user_id = None
 
-
-    # === 従業員リストの表示ロジック ===
     conn = get_db_connection()
     company_name = st.session_state.user_company
     query = """
@@ -820,7 +787,6 @@ def show_employee_information_page():
         if not all_users:
             st.warning("まだ従業員が登録されていません。")
         else:
-            # ヘッダーを表示
             header_cols = st.columns([2, 2, 2, 3, 1])
             header_cols[0].write("**名前**")
             header_cols[1].write("**役職**")
@@ -828,7 +794,6 @@ def show_employee_information_page():
             header_cols[3].write("**登録日時**")
             st.divider()
 
-            # 各従業員情報をループで表示
             for user in all_users:
                 cols = st.columns([2, 2, 2, 3, 1])
                 cols[0].write(user['name'])
@@ -836,7 +801,6 @@ def show_employee_information_page():
                 cols[2].write(user['employee_id'])
                 cols[3].write(datetime.fromisoformat(user['created_at']).strftime('%Y年%m月%d日 %H:%M'))
 
-                # 自分自身は削除できないようにボタンを表示しない
                 if user['id'] != st.session_state.user_id:
                     with cols[4]:
                         if st.button("削除", key=f"delete_{user['id']}", use_container_width=True):
@@ -854,8 +818,6 @@ def show_user_registration_page():
     st.info("あなたの会社に新しいユーザーを登録します。")
 
     with st.form("user_registration_form"):
-        # 会社名の入力ウィジェットは、単に情報を表示する目的でのみ使用します。
-        # ここでの戻り値は使いません。
         st.text_input("会社名", value=st.session_state.user_company, disabled=True)
 
         new_name = st.text_input("名前")
@@ -881,9 +843,6 @@ def show_user_registration_page():
                 error_message = "パスワードは以下の要件を満たす必要があります：\n" + "\n".join(password_errors)
                 st.error(error_message)
             else:
-                # === 修正点 ===
-                # 登録処理には、ウィジェットからではなく、セッションステートから直接会社名を取得して使用します。
-                # これにより、他のページの状態に影響されることなく、常に正しい会社名が保証されます。
                 company_name_from_session = st.session_state.user_company
                 if register_user(new_name, new_employee_id, new_password, company_name_from_session, new_position):
                     st.success(f"ユーザー「{new_name}」さんを登録しました。")
@@ -913,9 +872,6 @@ def show_work_status_page():
 
     conn = get_db_connection()
 
-    # === 修正箇所 ===
-    # SQLクエリを修正。存在しない`work_date`列の代わりに、
-    # `date(start_datetime)`で日付を抽出して利用する。
     shifts_query = """
         SELECT
             date(start_datetime) as work_date,
@@ -987,7 +943,7 @@ def show_work_status_page():
     col4.metric("時間外労働時間", overtime_str)
 
     st.divider()
-# --- Stamping Logic ---
+
 def record_clock_in():
     conn = get_db_connection()
     now = get_jst_now()
@@ -1053,12 +1009,10 @@ def record_clock_in_cancellation():
 
 def display_work_summary():
     """勤務時間のサマリーを表示"""
-    # このifブロック内では、ユーザーが出勤中であることが前提となります
     if st.session_state.get('attendance_id'):
         conn = get_db_connection()
         att = conn.execute('SELECT * FROM attendance WHERE id = ?', (st.session_state.attendance_id,)).fetchone()
 
-        # DBから何らかの理由で勤怠記録が消えていた場合の安全装置
         if att is None:
             st.toast("勤怠記録が見つかりませんでした。状態をリセットします。")
             st.session_state.work_status = "not_started"
@@ -1068,7 +1022,6 @@ def display_work_summary():
             st.rerun()
             return
 
-        # ここから下のコードでは、変数`att`が必ず存在することが保証されています
         breaks = conn.execute('SELECT * FROM breaks WHERE attendance_id = ?', (st.session_state.attendance_id,)).fetchall()
         today_str = get_jst_now().date().isoformat()
         shift = conn.execute(
@@ -1145,11 +1098,9 @@ def display_work_summary():
         st.divider()
 
         if shift and not att['clock_out']:
-            # === 修正箇所 ===
-            # DBから取得したナイーブな時刻に、JSTのタイムゾーン情報を付与する
+
             naive_end_dt = datetime.fromisoformat(shift['end_datetime'])
             end_dt = naive_end_dt.replace(tzinfo=JST)
-            # ================
 
             reminder_time = end_dt + timedelta(minutes=15)
             now = get_jst_now()
@@ -1183,10 +1134,8 @@ def main():
 
         page_options = ["タイムカード", "シフト管理", "シフト表", "出勤状況", message_label, "ユーザー情報"]
 
-        # === 修正・追加箇所 (ここから) ===
         if st.session_state.user_position == "社長":
             page_options.insert(1, "従業員情報")
-        # === 修正・追加箇所 (ここまで) ===
 
         if st.session_state.user_position in ["社長", "役職者"]:
             page_options.insert(1, "ユーザー登録")
@@ -1213,10 +1162,8 @@ def main():
 
         if page_to_show == "タイムカード":
             show_timecard_page()
-        # === 修正・追加箇所 (ここから) ===
         elif page_to_show == "従業員情報":
             show_employee_information_page()
-        # === 修正・追加箇所 (ここまで) ===
         elif page_to_show == "ユーザー登録":
             show_user_registration_page()
         elif page_to_show == "シフト管理":
