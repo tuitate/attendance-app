@@ -763,16 +763,9 @@ def show_direct_message_page():
         st.subheader("宛先リスト")
         with st.container(height=600):
             for user in sorted_users:
-                list_item_cols = st.columns([5, 1])
+                list_item_cols = st.columns([1, 5])
+
                 with list_item_cols[0]:
-                    label = user['name']
-                    if user['has_unread']:
-                        label = f"🔴 {label}"
-                    if st.button(label, key=f"select_dm_{user['id']}", use_container_width=True):
-                        st.session_state.dm_selected_user_id = user['id']
-                        st.rerun()
-                
-                with list_item_cols[1]:
                     if user['is_pinned']:
                         if st.button("📌", key=f"unpin_{user['id']}", help="ピン留めを外す"):
                             unpin_user(current_user_id, user['id'])
@@ -781,6 +774,14 @@ def show_direct_message_page():
                         if st.button("📍", key=f"pin_{user['id']}", help="ピン留めする"):
                             pin_user(current_user_id, user['id'])
                             st.rerun()
+
+                with list_item_cols[1]:
+                    label = user['name']
+                    if user['has_unread']:
+                        label = f"🔴 {label}"
+                    if st.button(label, key=f"select_dm_{user['id']}", use_container_width=True):
+                        st.session_state.dm_selected_user_id = user['id']
+                        st.rerun()
 
     with col2:
         selected_user_id = st.session_state.get('dm_selected_user_id')
