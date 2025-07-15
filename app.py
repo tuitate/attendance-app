@@ -268,7 +268,6 @@ def shift_edit_dialog(target_date):
                 st.session_state.last_shift_start_time = start_datetime.time()
                 st.session_state.last_shift_end_time = end_datetime.time()
                 st.toast("シフトを保存しました！", icon="✅")
-                py_time.sleep(1)
                 st.rerun()
 
     with col2:
@@ -279,7 +278,6 @@ def shift_edit_dialog(target_date):
                 conn.commit()
                 conn.close()
                 st.toast("シフトを削除しました。", icon="🗑️")
-                py_time.sleep(1)
                 st.rerun()
 
 def show_login_register_page():
