@@ -833,44 +833,85 @@ def show_work_status_page():
         if st.button("来月", key="status_next"):
             st.session_state.calendar_date += relativedelta(months=1)
             st.rerun()
+            
     selected_month = st.session_state.calendar_date
     first_day = selected_month.replace(day=1)
     last_day = (first_day + relativedelta(months=1)) - timedelta(days=1)
+    
     conn = get_db_connection()
+    
+    # 月全体のシフト情報を取得
     shifts = conn.execute("SELECT start_datetime, end_datetime FROM shifts WHERE user_id = ? AND date(start_datetime) BETWEEN ? AND ?", (st.session_state.user_id, first_day.isoformat(), last_day.isoformat())).fetchall()
     total_scheduled_seconds = 0
     for shift in shifts:
         start_dt = datetime.fromisoformat(shift['start_datetime'])
         end_dt = datetime.fromisoformat(shift['end_datetime'])
         total_scheduled_seconds += (end_dt - start_dt).total_seconds()
+
+    # 月全体の勤怠記録を取得
     attendances = conn.execute("SELECT id, clock_in, clock_out FROM attendance WHERE user_id = ? AND work_date BETWEEN ? AND ?", (st.session_state.user_id, first_day.isoformat(), last_day.isoformat())).fetchall()
+    
+    # === ここからが新しい計算ロジックです ===
     total_actual_work_seconds = 0
     total_break_seconds = 0
+    total_overtime_seconds = 0
+    standard_workday_seconds = 8 * 3600  # 労働基準法に基づく1日の法定労働時間（8時間）
+
+    # 1日ごとに勤怠を計算
     for att in attendances:
         if att['clock_in'] and att['clock_out']:
             clock_in_dt = datetime.fromisoformat(att['clock_in'])
             clock_out_dt = datetime.fromisoformat(att['clock_out'])
-            total_actual_work_seconds += (clock_out_dt - clock_in_dt).total_seconds()
+            
+            # その日の総勤務時間（休憩含）
+            daily_gross_work_seconds = (clock_out_dt - clock_in_dt).total_seconds()
+            total_actual_work_seconds += daily_gross_work_seconds
+
+            # その日の休憩時間を計算
+            daily_break_seconds = 0
             breaks = conn.execute("SELECT break_start, break_end FROM breaks WHERE attendance_id = ?", (att['id'],)).fetchall()
             for br in breaks:
                 if br['break_start'] and br['break_end']:
                     break_start_dt = datetime.fromisoformat(br['break_start'])
                     break_end_dt = datetime.fromisoformat(br['break_end'])
-                    total_break_seconds += (break_end_dt - break_start_dt).total_seconds()
+                    daily_break_seconds += (break_end_dt - break_start_dt).total_seconds()
+            total_break_seconds += daily_break_seconds
+
+            # その日の実働時間（休憩除）を計算
+            net_daily_work_seconds = daily_gross_work_seconds - daily_break_seconds
+            
+            # 実働時間が8時間を超えていれば、超えた分を残業時間として加算
+            if net_daily_work_seconds > standard_workday_seconds:
+                total_overtime_seconds += (net_daily_work_seconds - standard_workday_seconds)
+
     conn.close()
-    net_actual_work_seconds = total_actual_work_seconds - total_break_seconds
+    
+    # 月の合計実働時間
+    net_monthly_work_seconds = total_actual_work_seconds - total_break_seconds
+
+    # 秒を「X時間 Y分」形式に変換するヘルパー関数
     def format_seconds_to_hours_minutes(seconds):
         hours, remainder = divmod(int(seconds), 3600)
         minutes, _ = divmod(remainder, 60)
         return f"{hours}時間 {minutes:02}分"
+
+    # 各指標をフォーマット
     scheduled_str = format_seconds_to_hours_minutes(total_scheduled_seconds)
-    actual_str = format_seconds_to_hours_minutes(net_actual_work_seconds)
+    actual_str = format_seconds_to_hours_minutes(net_monthly_work_seconds)
     break_str = format_seconds_to_hours_minutes(total_break_seconds)
+    overtime_str = format_seconds_to_hours_minutes(total_overtime_seconds)
+
     st.divider()
-    col1, col2, col3 = st.columns(3)
+    
+    # === 表示部分を4分割に変更 ===
+    col1, col2 = st.columns(2)
+    col3, col4 = st.columns(2)
+    
     col1.metric("出勤予定時間", scheduled_str)
     col2.metric("実働時間", actual_str)
     col3.metric("合計休憩時間", break_str)
+    col4.metric("時間外労働時間", overtime_str) # 残業時間を表示
+    
     st.divider()
 
 # --- Stamping Logic ---
