@@ -198,6 +198,7 @@ def broadcast_message_dialog():
                 add_broadcast_message(st.session_state.user_id, message_body, st.session_state.user_company, file_base64, file_name, file_type)
 
                 st.toast("メッセージを送信しました！", icon="✅")
+                st.rerun()
             else:
                 st.warning("メッセージ内容を入力するか、ファイルを添付してください。")
 
@@ -799,6 +800,7 @@ def show_employee_information_page():
         st.error(f"従業員情報の読み込み中にエラーが発生しました: {e}")
     finally:
         conn.close()
+        
 def show_user_registration_page():
     """管理者（社長・役職者）が新しいユーザーを登録するためのページ"""
     st.header("ユーザー登録")
@@ -838,7 +840,6 @@ def show_user_registration_page():
                 else:
                     st.error("その従業員IDは既に使用されています。")
 
-
 def show_work_status_page():
     st.header("出勤状況")
     col1, col2, col3 = st.columns([1, 6, 1])
@@ -870,7 +871,6 @@ def show_work_status_page():
     """
     shifts_records = conn.execute(shifts_query, (st.session_state.user_id, first_day.isoformat(), last_day.isoformat())).fetchall()
     shifts_dict = {row['work_date']: row for row in shifts_records}
-    # ================
 
     attendances = conn.execute("SELECT id, work_date, clock_in, clock_out FROM attendance WHERE user_id = ? AND work_date BETWEEN ? AND ?", (st.session_state.user_id, first_day.isoformat(), last_day.isoformat())).fetchall()
 
@@ -995,7 +995,6 @@ def record_clock_in_cancellation():
         st.session_state.break_id = None
 
 def display_work_summary():
-    """勤務時間のサマリーを表示"""
     if st.session_state.get('attendance_id'):
         conn = get_db_connection()
         att = conn.execute('SELECT * FROM attendance WHERE id = ?', (st.session_state.attendance_id,)).fetchone()
