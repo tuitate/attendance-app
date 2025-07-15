@@ -111,6 +111,17 @@ def init_db():
         )
     ''')
 
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS pinned_users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            pinned_user_id INTEGER NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users (id),
+            FOREIGN KEY (pinned_user_id) REFERENCES users (id),
+            UNIQUE(user_id, pinned_user_id)
+        )
+    ''')
+
     conn.commit()
     conn.close()
     
