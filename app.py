@@ -998,6 +998,7 @@ def main():
     if not st.session_state.get('logged_in'):
         show_login_register_page()
     else:
+        st_autorefresh(interval=3 * 60 * 1000, key="keep_alive_refresh")
         st.sidebar.title("メニュー")
         st.sidebar.markdown(f"**名前:** {st.session_state.user_name}")
         st.sidebar.markdown(f"**従業員ID:** {get_user_employee_id(st.session_state.user_id)}")
