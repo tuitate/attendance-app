@@ -3,6 +3,7 @@ import sqlite3
 DATABASE_NAME = 'attendance.db'
 
 def get_db_connection():
+    """データベース接続を取得する"""
     conn = sqlite3.connect(DATABASE_NAME)
     conn.row_factory = sqlite3.Row
     return conn
@@ -16,18 +17,13 @@ def update_db_schema():
     
     if 'company' not in user_columns:
         cursor.execute("ALTER TABLE users ADD COLUMN company TEXT")
-        print("Added 'company' column to 'users' table.")
-
     if 'position' not in user_columns:
         cursor.execute("ALTER TABLE users ADD COLUMN position TEXT")
-        print("Added 'position' column to 'users' table.")
 
     cursor.execute("PRAGMA table_info(shifts)")
     shift_columns = [row['name'] for row in cursor.fetchall()]
-
     if 'work_date' not in shift_columns:
         cursor.execute("ALTER TABLE shifts ADD COLUMN work_date TEXT")
-        print("Added 'work_date' column to 'shifts' table.")
 
     cursor.execute("PRAGMA table_info(messages)")
     message_columns = [row['name'] for row in cursor.fetchall()]
@@ -36,16 +32,14 @@ def update_db_schema():
         "sender_id": "INTEGER",
         "file_base64": "TEXT",
         "file_name": "TEXT",
-        "file_type": "TEXT"
+        "file_type": "TEXT",
+        "message_type": "TEXT DEFAULT 'SYSTEM'"
     }
 
     for col_name, col_type in new_message_columns.items():
         if col_name not in message_columns:
-            try:
-                cursor.execute(f"ALTER TABLE messages ADD COLUMN {col_name} {col_type}")
-                print(f"Added '{col_name}' column to 'messages' table.")
-            except sqlite3.Error as e:
-                print(f"Error adding '{col_name}' column: {e}")
+            cursor.execute(f"ALTER TABLE messages ADD COLUMN {col_name} {col_type}")
+            print(f"Added '{col_name}' column to 'messages' table.")
 
     conn.commit()
     conn.close()
@@ -111,6 +105,7 @@ def init_db():
             file_base64 TEXT,
             file_name TEXT,
             file_type TEXT,
+            message_type TEXT DEFAULT 'SYSTEM',
             FOREIGN KEY (user_id) REFERENCES users (id),
             FOREIGN KEY (sender_id) REFERENCES users (id)
         )
@@ -118,7 +113,7 @@ def init_db():
 
     conn.commit()
     conn.close()
-
+    
     update_db_schema()
 
 if __name__ == '__main__':
