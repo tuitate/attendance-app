@@ -1010,11 +1010,13 @@ def display_work_summary():
 
         st.divider()
 
-        # === 修正箇所 ===
-        # リマインダーのロジックを、上記の総勤務時間表示などの処理と同じブロック内に配置します。
-        # これにより、'att'変数が未定義の状態で呼び出されることを防ぎます。
         if shift and not att['clock_out']:
-            end_dt = datetime.fromisoformat(shift['end_datetime'])
+            # === 修正箇所 ===
+            # DBから取得したナイーブな時刻に、JSTのタイムゾーン情報を付与する
+            naive_end_dt = datetime.fromisoformat(shift['end_datetime'])
+            end_dt = naive_end_dt.replace(tzinfo=JST)
+            # ================
+
             reminder_time = end_dt + timedelta(minutes=15)
             now = get_jst_now()
 
