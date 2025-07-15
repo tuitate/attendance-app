@@ -915,12 +915,15 @@ def show_employee_information_page():
     st.header("従業員情報")
     st.info("あなたの会社の全従業員の情報を表示しています。")
 
+    # アクセス権限のチェック
     if st.session_state.user_position not in ["社長", "役職者"]:
         st.error("このページへのアクセス権限がありません。")
         return
 
+    # --- 確認メッセージ用のプレースホルダーをページ上部に用意 ---
     confirmation_placeholder = st.empty()
 
+    # --- 削除確認のロジック ---
     if st.session_state.get('confirming_delete_user_id'):
         user_to_delete_id = st.session_state.confirming_delete_user_id
         conn = get_db_connection()
@@ -929,23 +932,29 @@ def show_employee_information_page():
 
         if user_to_delete_info:
             user_to_delete_name = user_to_delete_info['name']
-            st.warning(f"本当に従業員「{user_to_delete_name}」さんを削除しますか？\n\nこの操作は元に戻せません。関連するすべての勤怠記録やシフト情報も削除されます。")
-            c1, c2 = st.columns(2)
-            with c1:
-                if st.button("はい、削除します", key=f"confirm_delete_{user_to_delete_id}", type="primary", use_container_width=True):
-                    if delete_user(user_to_delete_id):
-                        st.success(f"「{user_to_delete_name}」さんを削除しました。")
-                    else:
-                        st.error("削除中にエラーが発生しました。")
-                    st.session_state.confirming_delete_user_id = None
-                    st.rerun()
-            with c2:
-                if st.button("いいえ", key=f"cancel_delete_{user_to_delete_id}", use_container_width=True):
-                    st.session_state.confirming_delete_user_id = None
-                    st.rerun()
+            
+            # プレースホルダーの中に確認メッセージとボタンを表示
+            with confirmation_placeholder.container(border=True):
+                st.warning(f"本当に従業員「{user_to_delete_name}」さんを削除しますか？\n\nこの操作は元に戻せません。関連するすべての勤怠記録やシフト情報も削除されます。")
+                c1, c2 = st.columns(2)
+                with c1:
+                    if st.button("はい、削除します", key=f"confirm_delete_{user_to_delete_id}", type="primary", use_container_width=True):
+                        if delete_user(user_to_delete_id):
+                            st.success(f"「{user_to_delete_name}」さんを削除しました。")
+                        else:
+                            st.error("削除中にエラーが発生しました。")
+                        st.session_state.confirming_delete_user_id = None
+                        st.rerun()
+                with c2:
+                    if st.button("いいえ", key=f"cancel_delete_{user_to_delete_id}", use_container_width=True):
+                        st.session_state.confirming_delete_user_id = None
+                        st.rerun()
         else:
+            # 削除対象のユーザーが見つからなかった場合
             st.session_state.confirming_delete_user_id = None
+            st.rerun() # 念のため再実行してプレースホルダーをクリア
 
+    # --- 従業員リストの表示ロジック ---
     conn = get_db_connection()
     company_name = st.session_state.user_company
     query = """
