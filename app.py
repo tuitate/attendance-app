@@ -454,9 +454,14 @@ def show_shift_management_page():
             st.session_state.calendar_date += relativedelta(months=1)
             st.rerun()
 
-    calendar_result = calendar(events=events, options={"headerToolbar": False, "initialDate": st.session_state.calendar_date.isoformat(), "initialView": "dayGridMonth", "locale": "ja", "selectable": True, "height": "auto"}, custom_css=".fc-event-title { font-weight: 700; }\n.fc-toolbar-title { font-size: 1.5rem; }\n.fc-view-harness { height: 650px !important; }", key=f"calendar_{st.session_state.calendar_date}")
+calendar_key = f"calendar_{st.session_state.calendar_date}_{st.session_state.calendar_force_refresh_key}"
+    calendar_result = calendar(
+        events=events,
+        options={"headerToolbar": False, "initialDate": st.session_state.calendar_date.isoformat(), "initialView": "dayGridMonth", "locale": "ja", "selectable": True, "height": "auto"},
+        custom_css=".fc-event-title { font-weight: 700; }\n.fc-toolbar-title { font-size: 1.5rem; }\n.fc-view-harness { height: 650px !important; }",
+        key=calendar_key
+    )
 
-    if isinstance(calendar_result, dict):
         clicked_date = None
         if 'dateClick' in calendar_result:
             utc_dt = datetime.fromisoformat(calendar_result['dateClick']['date'].replace('Z', '+00:00'))
