@@ -43,6 +43,54 @@ def add_broadcast_message(sender_id, content, company_name, file_base64=None, fi
     finally:
         conn.close()
 
+def add_direct_message(sender_id, recipient_id, content, file_base64=None, file_name=None, file_type=None):
+    conn = get_db_connection()
+    now = get_jst_now().isoformat()
+    try:
+        conn.execute('INSERT INTO messages (user_id, sender_id, content, created_at, file_base64, file_name, file_type) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                     (recipient_id, sender_id, content, now, file_base64, file_name, file_type))
+        conn.commit()
+    except sqlite3.Error as e:
+        print(f"ダイレクトメッセージの送信に失敗しました: {e}")
+    finally:
+        conn.close()
+
+def render_dm_chat_window(recipient_id, recipient_name):
+    st.subheader(f"💬 {recipient_name}さんとのメッセージ")
+    
+    current_user_id = st.session_state.user_id
+
+    chat_container = st.container(height=500)
+    with chat_container:
+        conn = get_db_connection()
+        messages = conn.execute("""
+            SELECT * FROM messages
+            WHERE (user_id = ? AND sender_id = ?) OR (user_id = ? AND sender_id = ?)
+            ORDER BY created_at ASC
+        """, (current_user_id, recipient_id, recipient_id, current_user_id)).fetchall()
+        conn.close()
+
+        for msg in messages:
+            role = "user" if msg['sender_id'] == current_user_id else "assistant"
+            with st.chat_message(role):
+                st.markdown(msg['content'])
+                if msg['file_base64']:
+                    file_bytes = base64.b64decode(msg['file_base64'])
+                    if msg['file_type'] and msg['file_type'].startswith("image/"):
+                        st.image(file_bytes)
+                    else:
+                        st.download_button(
+                            label=f"📎 {msg['file_name']}",
+                            data=file_bytes,
+                            file_name=msg['file_name'],
+                            mime=msg['file_type']
+                        )
+
+    prompt = st.chat_input("メッセージを入力...")
+    if prompt:
+        add_direct_message(current_user_id, recipient_id, prompt)
+        st.rerun()
+
 def delete_broadcast_message(created_at_iso):
     conn = get_db_connection()
     try:
@@ -52,7 +100,6 @@ def delete_broadcast_message(created_at_iso):
         st.error(f"メッセージの削除中にエラーが発生しました: {e}")
     finally:
         conn.close()
-
 
 def validate_password(password):
     errors = []
@@ -87,6 +134,7 @@ def init_session_state():
         'confirming_delete_message_created_at': None,
         'clock_in_error': None,
         'confirming_delete_user_id': None,
+        'dm_selected_user_id': None,
     }
     for key, default_value in defaults.items():
         if key not in st.session_state:
@@ -614,6 +662,43 @@ def show_shift_table_page():
     styled_df = df.style.apply(highlight_user, name_to_highlight=current_user_display_name, subset=['従業員名'])
     st.dataframe(styled_df, use_container_width=True, hide_index=True)
 
+def show_direct_message_page():
+    st.header("ダイレクトメッセージ")
+
+    conn = get_db_connection()
+    all_users = conn.execute("SELECT id, name FROM users WHERE company = ? AND id != ?", 
+                             (st.session_state.user_company, st.session_state.user_id)).fetchall()
+    conn.close()
+
+    if not all_users:
+        st.info("メッセージを送る相手がいません。")
+        return
+
+    user_options = {user['name']: user['id'] for user in all_users}
+    user_names = ["宛先を選択してください"] + list(user_options.keys())
+
+    selected_user_id = st.session_state.get('dm_selected_user_id')
+    selected_user_name = None
+    if selected_user_id:
+        for name, uid in user_options.items():
+            if uid == selected_user_id:
+                selected_user_name = name
+                break
+    
+    current_selection_index = user_names.index(selected_user_name) if selected_user_name in user_names else 0
+    selected_name = st.selectbox("メッセージを送る相手を選択してください:", user_names, index=current_selection_index)
+
+    if selected_name != "宛先を選択してください":
+        recipient_id = user_options[selected_name]
+        if st.session_state.dm_selected_user_id != recipient_id:
+            st.session_state.dm_selected_user_id = recipient_id
+            st.rerun()
+
+        render_dm_chat_window(recipient_id, selected_name)
+    else:
+        st.session_state.dm_selected_user_id = None
+        st.info("上部のセレクトボックスから、メッセージを送る相手を選択してください。")
+
 def show_messages_page():
     col1, col2 = st.columns([2, 1])
     with col1:
@@ -1104,7 +1189,6 @@ def main():
     if not st.session_state.get('logged_in'):
         show_login_register_page()
     else:
-        st_autorefresh(interval=3 * 60 * 1000, key="keep_alive_refresh")
         st.sidebar.title("メニュー")
         st.sidebar.markdown(f"**名前:** {st.session_state.user_name}")
         st.sidebar.markdown(f"**従業員ID:** {get_user_employee_id(st.session_state.user_id)}")
@@ -1117,12 +1201,10 @@ def main():
         if unread_count > 0:
             message_label = f"全体メッセージ 🔴 ({unread_count})"
 
-        page_options = ["タイムカード", "シフト管理", "シフト表", "出勤状況", message_label, "ユーザー情報"]
-
-        if st.session_state.user_position == "社長":
-            page_options.insert(1, "従業員情報")
-
+        page_options = ["タイムカード", "シフト管理", "シフト表", "出勤状況", message_label, "ダイレクトメッセージ", "ユーザー情報"]
+        
         if st.session_state.user_position in ["社長", "役職者"]:
+            page_options.insert(1, "従業員情報")
             page_options.insert(1, "ユーザー登録")
 
         try:
@@ -1136,6 +1218,8 @@ def main():
 
         if st.session_state.page != page:
             st.session_state.page = page
+            if page != "ダイレクトメッセージ":
+                st.session_state.dm_selected_user_id = None
             st.rerun()
 
         if st.sidebar.button("ログアウト"):
@@ -1159,6 +1243,8 @@ def main():
             show_work_status_page()
         elif page_to_show.startswith("全体メッセージ"):
             show_messages_page()
+        elif page_to_show == "ダイレクトメッセージ":
+            show_direct_message_page()
         elif page_to_show == "ユーザー情報":
             show_user_info_page()
 
