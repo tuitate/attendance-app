@@ -1090,7 +1090,6 @@ def display_work_summary():
                 st.session_state.last_clock_out_reminder_date = today_str
                 
 def main():
-    """メインのアプリケーションロジック"""
     st.set_page_config(layout="wide")
 
     init_db()
@@ -1108,9 +1107,9 @@ def main():
         unread_count = conn.execute('SELECT COUNT(*) FROM messages WHERE user_id = ? AND is_read = 0', (st.session_state.user_id,)).fetchone()[0]
         conn.close()
 
-        message_label = "メッセージ"
+        message_label = "全体メッセージ"
         if unread_count > 0:
-            message_label = f"メッセージ 🔴 ({unread_count})"
+            message_label = f"全体メッセージ 🔴 ({unread_count})"
 
         page_options = ["タイムカード", "シフト管理", "シフト表", "出勤状況", message_label, "ユーザー情報"]
 
@@ -1152,7 +1151,7 @@ def main():
             show_shift_table_page()
         elif page_to_show == "出勤状況":
             show_work_status_page()
-        elif page_to_show.startswith("メッセージ"):
+        elif page_to_show.startswith("全体メッセージ"):
             show_messages_page()
         elif page_to_show == "ユーザー情報":
             show_user_info_page()
