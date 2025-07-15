@@ -24,19 +24,19 @@ def get_jst_now():
 def add_message(user_id, content):
     conn = get_db_connection()
     now = get_jst_now().isoformat()
-    conn.execute('INSERT INTO messages (user_id, content, created_at, image_base64) VALUES (?, ?, ?, ?)',
-                 (user_id, content, now, None))
+    conn.execute('INSERT INTO messages (user_id, sender_id, content, created_at, file_base64, file_name, file_type) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                 (user_id, user_id, content, now, None, None, None))
     conn.commit()
     conn.close()
 
-def add_broadcast_message(content, company_name, image_base64=None):
+def add_broadcast_message(sender_id, content, company_name, file_base64=None, file_name=None, file_type=None):
     conn = get_db_connection()
     try:
         users_in_company = conn.execute('SELECT id FROM users WHERE company = ?', (company_name,)).fetchall()
         now = get_jst_now().isoformat()
         for user_row in users_in_company:
-            conn.execute('INSERT INTO messages (user_id, content, created_at, image_base64) VALUES (?, ?, ?, ?)',
-                         (user_row['id'], content, now, image_base64))
+            conn.execute('INSERT INTO messages (user_id, sender_id, content, created_at, file_base64, file_name, file_type) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                         (user_row['id'], sender_id, content, now, file_base64, file_name, file_type))
         conn.commit()
     except sqlite3.Error as e:
         print(f"一斉送信メッセージの送信に失敗しました: {e}")
@@ -180,26 +180,26 @@ def broadcast_message_dialog():
     st.subheader("全従業員へのメッセージ送信")
     with st.form(key='broadcast_dialog_form'):
         message_content = st.text_area("メッセージ内容を入力してください。", height=150)
-
-        uploaded_image = st.file_uploader("画像を添付 (任意)", type=["png", "jpg", "jpeg"])
+        uploaded_file = st.file_uploader("ファイルを添付 (任意)", type=None)
 
         submitted = st.form_submit_button("この内容で送信する")
         if submitted:
-            if message_content or uploaded_image:
+            if message_content or uploaded_file:
                 sender_name = st.session_state.user_name
                 message_body = f"**【お知らせ】{sender_name}さんより**\n\n{message_content}"
 
-                image_base64 = None
-                if uploaded_image is not None:
-                    image_bytes = uploaded_image.getvalue()
-                    image_base64 = base64.b64encode(image_bytes).decode()
-
-                add_broadcast_message(message_body, st.session_state.user_company, image_base64)
-                st.toast("メッセージを送信しました！", icon="✅")
+                file_base64, file_name, file_type = None, None, None
+                if uploaded_file is not None:
+                    file_bytes = uploaded_file.getvalue()
+                    file_base64 = base64.b64encode(file_bytes).decode()
+                    file_name = uploaded_file.name
+                    file_type = uploaded_file.type
                 
-            else:
-                st.warning("メッセージ内容を入力するか、画像を添付してください。")
+                add_broadcast_message(st.session_state.user_id, message_body, st.session_state.user_company, file_base64, file_name, file_type)
 
+                st.toast("メッセージを送信しました！", icon="✅")
+            else:
+                st.warning("メッセージ内容を入力するか、ファイルを添付してください。")
 
 @st.dialog("シフト登録・編集")
 def shift_edit_dialog(target_date):
@@ -614,10 +614,10 @@ def show_shift_table_page():
     st.dataframe(styled_df, use_container_width=True, hide_index=True)
 
 def show_messages_page():
-    st.header("メッセージ")
+    st.header("全体メッセージ")
 
     conn = get_db_connection()
-    messages = conn.execute('SELECT id, content, created_at, image_base64 FROM messages WHERE user_id = ? ORDER BY created_at DESC', (st.session_state.user_id,)).fetchall()
+    messages = conn.execute('SELECT id, content, created_at, file_base64, file_name, file_type, sender_id FROM messages WHERE user_id = ? ORDER BY created_at DESC', (st.session_state.user_id,)).fetchall()
 
     if not messages:
         st.info("新しいメッセージはありません。")
@@ -646,19 +646,29 @@ def show_messages_page():
                         st.markdown(f"**{created_at_dt.strftime('%Y年%m月%d日 %H:%M')}**")
 
                     with col2:
-                        if st.session_state.user_position in ["社長", "役職者"]:
-                            is_personal_message = not msg['content'].startswith("**【お知らせ】")
-                            if not is_personal_message:
-                                if st.button("🗑️ 削除", key=f"delete_{msg['id']}", use_container_width=True):
-                                    st.session_state.confirming_delete_message_created_at = msg['created_at']
-                                    st.rerun()
+                        is_broadcast = msg['content'].startswith("**【お知らせ】")
+                        if is_broadcast and msg['sender_id'] == st.session_state.user_id:
+                            if st.button("🗑️ 削除", key=f"delete_{msg['id']}", use_container_width=True):
+                                st.session_state.confirming_delete_message_created_at = msg['created_at']
+                                st.rerun()
 
                     if msg['content']:
                         st.markdown(msg['content'])
 
-                    if msg['image_base64']:
-                        image_bytes = base64.b64decode(msg['image_base64'])
-                        st.image(image_bytes)
+                    if msg['file_base64']:
+                        file_bytes = base64.b64decode(msg['file_base64'])
+                        file_type = msg['file_type']
+                        file_name = msg['file_name']
+
+                        if file_type and file_type.startswith("image/"):
+                            st.image(file_bytes)
+                        else:
+                            st.download_button(
+                                label=f"📎 ダウンロード: {file_name}",
+                                data=file_bytes,
+                                file_name=file_name,
+                                mime=file_type
+                            )
 
     conn.execute('UPDATE messages SET is_read = 1 WHERE user_id = ?', (st.session_state.user_id,))
     conn.commit()
@@ -666,12 +676,10 @@ def show_messages_page():
 
     st.divider()
 
-    if st.session_state.user_position in ["社長", "役職者"]:
-        _, col2 = st.columns([0.6, 0.4])
-        with col2:
-            if st.button("📝 全社へメッセージを送信する", use_container_width=True, type="primary"):
-                broadcast_message_dialog()
-
+    _, col2 = st.columns([0.6, 0.4])
+    with col2:
+        if st.button("📝 全社へメッセージを送信する", use_container_width=True, type="primary"):
+            broadcast_message_dialog()
 
 def show_user_info_page():
     st.header("ユーザー情報")
