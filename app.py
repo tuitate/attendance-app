@@ -678,6 +678,56 @@ def show_user_info_page():
                         else:
                             st.error("パスワードの変更中にエラーが発生しました。")
 
+def show_employee_information_page():
+    """社長専用の従業員情報閲覧ページ"""
+    st.header("従業員情報")
+    st.info("あなたの会社の全従業員の情報を表示しています。")
+
+    conn = get_db_connection()
+    company_name = st.session_state.user_company
+
+    # データベースから従業員情報を取得し、役職の順に並び替えるSQLクエリ
+    query = """
+    SELECT name, position, employee_id, created_at
+    FROM users
+    WHERE company = ?
+    ORDER BY
+        CASE position
+            WHEN '役職者' THEN 1
+            WHEN '社員' THEN 2
+            WHEN 'バイト' THEN 3
+            ELSE 4
+        END,
+        id
+    """
+    
+    try:
+        # Pandas DataFrameとしてデータを読み込む
+        df = pd.read_sql_query(query, conn, params=(company_name,))
+        
+        if df.empty:
+            st.warning("まだ従業員が登録されていません。")
+        else:
+            # 列名を日本語に設定
+            df.rename(columns={
+                'name': '名前',
+                'position': '役職',
+                'employee_id': '従業員ID',
+                'created_at': '登録日時'
+            }, inplace=True)
+
+            # '登録日時'列のフォーマットを整える
+            # ISO形式の文字列をdatetimeオブジェクトに変換し、その後で希望の文字列形式に変換
+            df['登録日時'] = pd.to_datetime(df['登録日時']).dt.strftime('%Y年%m月%d日 %H:%M')
+            
+            # DataFrameを画面に表示（インデックスは非表示にする）
+            st.dataframe(df, use_container_width=True, hide_index=True)
+
+    except Exception as e:
+        st.error(f"従業員情報の読み込み中にエラーが発生しました: {e}")
+    finally:
+        conn.close()
+
 def show_user_registration_page():
     """管理者（社長・役職者）が新しいユーザーを登録するためのページ"""
     st.header("ユーザー登録")
@@ -942,7 +992,6 @@ def main():
     st.set_page_config(layout="wide")
 
     init_db()
-
     init_session_state()
 
     if not st.session_state.get('logged_in'):
@@ -962,6 +1011,11 @@ def main():
 
         page_options = ["タイムカード", "シフト管理", "シフト表", "出勤状況", message_label, "ユーザー情報"]
 
+        # === 修正・追加箇所 (ここから) ===
+        if st.session_state.user_position == "社長":
+            page_options.insert(1, "従業員情報")
+        # === 修正・追加箇所 (ここまで) ===
+
         if st.session_state.user_position in ["社長", "役職者"]:
             page_options.insert(1, "ユーザー登録")
 
@@ -975,8 +1029,8 @@ def main():
         page = st.sidebar.radio("ページを選択", page_options, index=current_page_index)
 
         if st.session_state.page != page:
-             st.session_state.page = page
-             st.rerun()
+            st.session_state.page = page
+            st.rerun()
 
         if st.sidebar.button("ログアウト"):
             for key in st.session_state.keys():
@@ -987,6 +1041,10 @@ def main():
 
         if page_to_show == "タイムカード":
             show_timecard_page()
+        # === 修正・追加箇所 (ここから) ===
+        elif page_to_show == "従業員情報":
+            show_employee_information_page()
+        # === 修正・追加箇所 (ここまで) ===
         elif page_to_show == "ユーザー登録":
             show_user_registration_page()
         elif page_to_show == "シフト管理":
@@ -999,6 +1057,3 @@ def main():
             show_messages_page()
         elif page_to_show == "ユーザー情報":
             show_user_info_page()
-
-if __name__ == "__main__":
-    main()
