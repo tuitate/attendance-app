@@ -99,6 +99,9 @@ def render_dm_chat_window(recipient_id, recipient_name):
                             mime=msg['file_type']
                         )
 
+    created_at_dt = datetime.fromisoformat(msg['created_at'])
+    st.caption(created_at_dt.strftime('%H:%M'))
+
     with st.container():
         message_input = st.text_input("メッセージを入力...", key=f"dm_input_{recipient_id}")
         file_input = st.file_uploader("ファイルを添付", key=f"dm_file_{recipient_id}", label_visibility="collapsed")
@@ -690,39 +693,59 @@ def show_direct_message_page():
     st.header("ダイレクトメッセージ")
 
     conn = get_db_connection()
+    current_user_id = st.session_state.user_id
+    
     all_users = conn.execute("SELECT id, name FROM users WHERE company = ? AND id != ?", 
-                             (st.session_state.user_company, st.session_state.user_id)).fetchall()
+                             (st.session_state.user_company, current_user_id)).fetchall()
+    
+    unread_senders_rows = conn.execute("""
+        SELECT DISTINCT sender_id FROM messages
+        WHERE user_id = ? AND is_read = 0 AND message_type = 'DIRECT'
+    """, (current_user_id,)).fetchall()
+    unread_sender_ids = {row['sender_id'] for row in unread_senders_rows}
     conn.close()
 
     if not all_users:
         st.info("メッセージを送る相手がいません。")
         return
 
-    user_options = {user['name']: user['id'] for user in all_users}
-    user_names = ["宛先を選択してください"] + list(user_options.keys())
-
-    selected_user_id = st.session_state.get('dm_selected_user_id')
-    selected_user_name = None
-    if selected_user_id:
-        for name, uid in user_options.items():
-            if uid == selected_user_id:
-                selected_user_name = name
-                break
+    unread_users = []
+    read_users = []
+    for user in all_users:
+        if user['id'] in unread_sender_ids:
+            unread_users.append(user)
+        else:
+            read_users.append(user)
     
-    current_selection_index = user_names.index(selected_user_name) if selected_user_name in user_names else 0
-    selected_name = st.selectbox("メッセージを送る相手を選択してください:", user_names, index=current_selection_index)
+    sorted_users = unread_users + read_users
+    col1, col2 = st.columns([1, 2])
 
-    if selected_name != "宛先を選択してください":
-        recipient_id = user_options[selected_name]
-        if st.session_state.dm_selected_user_id != recipient_id:
-            st.session_state.dm_selected_user_id = recipient_id
-            st.rerun()
+    with col1:
+        st.subheader("宛先リスト")
+        with st.container(height=600):
+            for user in sorted_users:
+                label = user['name']
+                if user['id'] in unread_sender_ids:
+                    label = f"🔴 {label}"
 
-        render_dm_chat_window(recipient_id, selected_name)
-    else:
-        st.session_state.dm_selected_user_id = None
-        st.info("上部のセレクトボックスから、メッセージを送る相手を選択してください。")
+                if st.button(label, key=f"select_dm_{user['id']}", use_container_width=True):
+                    st.session_state.dm_selected_user_id = user['id']
+                    st.rerun()
 
+    with col2:
+        selected_user_id = st.session_state.get('dm_selected_user_id')
+        if selected_user_id:
+            recipient_name = ""
+            for user in all_users:
+                if user['id'] == selected_user_id:
+                    recipient_name = user['name']
+                    break
+            
+            if recipient_name:
+                render_dm_chat_window(selected_user_id, recipient_name)
+        else:
+            st.info("← 左のリストからメッセージを送る相手を選択してください。")
+            
 def show_messages_page():
     st.header("全体メッセージ")
     col1, col2 = st.columns([2, 1])
