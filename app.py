@@ -96,6 +96,7 @@ def init_session_state():
         'last_shift_start_time': time(9, 0),
         'last_shift_end_time': time(17, 0),
         'confirming_delete_message_created_at': None,
+        'clock_in_error': None,
     }
     for key, default_value in defaults.items():
         if key not in st.session_state:
@@ -331,6 +332,13 @@ def show_timecard_page():
 
     button_placeholder = st.empty()
     with button_placeholder.container():
+        # === ここからが修正箇所です ===
+
+        # 前回の操作でエラーメッセージがあれば表示し、その後すぐに消す
+        if st.session_state.get('clock_in_error'):
+            st.warning(st.session_state.clock_in_error)
+            st.session_state.clock_in_error = None # 一度表示したら消す
+
         if st.session_state.confirmation_action:
             action_details = action_map.get(st.session_state.confirmation_action)
             if action_details:
@@ -348,30 +356,36 @@ def show_timecard_page():
         else:
             if st.session_state.work_status == "not_started":
                 if st.button("出勤", key="clock_in", use_container_width=True):
-                    # === ここからが修正箇所です ===
                     conn = get_db_connection()
                     today_str = get_jst_now().date().isoformat()
                     shift = conn.execute("SELECT start_datetime FROM shifts WHERE user_id = ? AND date(start_datetime) = ?", (st.session_state.user_id, today_str)).fetchone()
                     conn.close()
-
+                    
+                    error_msg = None
                     if shift is None:
-                        # 1. シフトが登録されていない場合の処理
-                        st.warning("本日のシフトが登録されていません。先にシフトを登録してください。")
+                        # 1. シフト未登録の場合のエラーメッセージをセット
+                        error_msg = "本日のシフトが登録されていません。先にシフトを登録してください。"
                     else:
-                        # 2. シフトが登録されている場合の時刻チェック
+                        # 2. 5分前ルールのチェック
                         naive_start_dt = datetime.fromisoformat(shift['start_datetime'])
-                        start_dt = naive_start_dt.replace(tzinfo=JST) # タイムゾーン情報を付与
+                        start_dt = naive_start_dt.replace(tzinfo=JST)
                         earliest_clock_in = start_dt - timedelta(minutes=5)
                         now = get_jst_now()
-
                         if now < earliest_clock_in:
-                            # 5分前より早い場合は警告
-                            st.warning(f"出勤できません。出勤時刻の5分前（{earliest_clock_in.strftime('%H:%M')}）から打刻できます。")
-                        else:
-                            # 5分前以降であれば確認画面へ
-                            st.session_state.confirmation_action = 'clock_in'
-                            st.rerun()
-                    # === ここまでが修正箇所です ===
+                            # 5分前より早い場合のエラーメッセージをセット
+                            error_msg = f"出勤できません。出勤時刻の5分前（{earliest_clock_in.strftime('%H:%M')}）から打刻できます。"
+                    
+                    if error_msg:
+                        # エラーがあった場合、メッセージをセッションに保存
+                        st.session_state.clock_in_error = error_msg
+                    else:
+                        # エラーがなければ、確認アクションへ進む
+                        st.session_state.confirmation_action = 'clock_in'
+                    
+                    # ページを再読み込みして、エラーメッセージまたは確認ダイアログを表示
+                    st.rerun()
+            
+            # === ここまでが修正箇所です ===
 
             elif st.session_state.work_status == "working":
                 col1, col2, col3 = st.columns(3)
