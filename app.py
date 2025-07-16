@@ -582,17 +582,6 @@ def show_shift_management_page():
         
 def show_shift_table_page():
     st.header("月間シフト表")
-
-    # --- ★変更点①：列の幅を調整するための数値入力欄を追加 ---
-    # ここで入力したピクセル数が、下の表の列幅に反映されます。
-    desired_width = st.number_input(
-        "日付列の幅をピクセルで調整",
-        min_value=50,   # 最小幅
-        max_value=300,  # 最大幅
-        value=90,       # 初期値
-        step=10         # 変更する際のステップ幅
-    )
-
     col1, col2, col3 = st.columns([1, 6, 1])
     with col1:
         if st.button("先月", key="table_prev"):
@@ -606,6 +595,17 @@ def show_shift_table_page():
             st.rerun()
 
     selected_date = st.session_state.calendar_date
+    desired_width_pixels = 100
+    css = f"""
+    <style>
+        .stDataFrame th[data-testid="stDataFrameColumnHeader"], .stDataFrame td {{
+            min-width: {desired_width_pixels}px !important;
+            max-width: {desired_width_pixels}px !important;
+        }}
+    </style>
+    """
+    st.markdown(css, unsafe_allow_html=True)
+
     first_day = selected_date.replace(day=1)
     last_day = first_day.replace(day=py_calendar.monthrange(first_day.year, first_day.month)[1])
 
@@ -639,10 +639,17 @@ def show_shift_table_page():
     shifts = pd.read_sql_query(shifts_query, conn, params=params)
     conn.close()
 
-    position_icons = { "社長": "👑", "役職者": "🥈", "社員": "🥉", "バイト": "👦🏿" }
+    position_icons = {
+        "社長": "👑", "役職者": "🥈", "社員": "🥉", "バイト": "👦🏿"
+    }
+
     current_user_icon = position_icons.get(st.session_state.user_position, '')
     current_user_display_name = f"{current_user_icon} {st.session_state.user_name}"
-    users['display_name'] = users.apply(lambda row: f"{position_icons.get(row['position'], '')} {row['name']}", axis=1)
+
+    users['display_name'] = users.apply(
+        lambda row: f"{position_icons.get(row['position'], '')} {row['name']}",
+        axis=1
+    )
 
     df = pd.DataFrame()
     df['従業員名'] = users['display_name']
@@ -670,33 +677,6 @@ def show_shift_table_page():
 
     df.reset_index(drop=True, inplace=True)
     df.fillna('', inplace=True)
-
-    def highlight_user(column, name_to_highlight):
-        styles = [''] * len(column)
-        try:
-            idx_pos = column.tolist().index(name_to_highlight)
-            styles = ['background-color: rgba(230, 243, 255, 0.6)' if i == idx_pos else '' for i in range(len(column))]
-        except ValueError:
-            pass
-        return styles
-
-    styled_df = df.style.apply(highlight_user, name_to_highlight=current_user_display_name, subset=['従業員名'])
-
-    column_config = {
-        "従業員名": st.column_config.TextColumn("従業員名", width="medium")
-    }
-    for col in df.columns:
-        if col != "従業員名":
-            # --- ★変更点②：数値入力欄の値を使って、列幅をピクセルで指定 ---
-            column_config[col] = st.column_config.TextColumn(col, width=desired_width)
-
-    # --- ★変更点③：st.dataframeの呼び出しを一つに絞り、重複を解消 ---
-    st.dataframe(
-        styled_df,
-        use_container_width=True,
-        hide_index=True,
-        column_config=column_config
-    )
 
     def highlight_user(column, name_to_highlight):
         styles = [''] * len(column)
