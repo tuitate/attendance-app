@@ -605,36 +605,21 @@ def show_shift_table_page():
             st.session_state.calendar_date += relativedelta(months=1)
             st.rerun()
 
-    selected_date = st.session_state.calendar_date
-    desired_width_pixels = 100
-    css = f"""
-    <style>
-        .stDataFrame th[data-testid="stDataFrameColumnHeader"], .stDataFrame td {{
-            min-width: {desired_width_pixels}px !important;
-            max-width: {desired_width_pixels}px !important;
-        }}
-    </style>
-    """
-    st.markdown(css, unsafe_allow_html=True)
+    # --- ★★★ 修正点: 以下のCSS関連のコードを削除 ★★★ ---
+    # selected_date = st.session_state.calendar_date
+    # desired_width_pixels = 100
+    # css = f"""..."""
+    # st.markdown(css, unsafe_allow_html=True)
 
-    first_day = selected_date.replace(day=1)
+    first_day = st.session_state.calendar_date.replace(day=1)
     last_day = first_day.replace(day=py_calendar.monthrange(first_day.year, first_day.month)[1])
 
     conn = get_db_connection()
     company_name = st.session_state.user_company
 
     users_query = """
-        SELECT id, name, position
-        FROM users
-        WHERE company = ?
-        ORDER BY
-            CASE position
-                WHEN '社長' THEN 1
-                WHEN '役職者' THEN 2
-                WHEN '社員' THEN 3
-                WHEN 'バイト' THEN 4
-                ELSE 5
-            END, id
+        SELECT id, name, position FROM users WHERE company = ?
+        ORDER BY CASE position WHEN '社長' THEN 1 WHEN '役職者' THEN 2 ELSE 3 END, id
     """
     users = pd.read_sql_query(users_query, conn, params=(company_name,))
 
@@ -650,21 +635,12 @@ def show_shift_table_page():
     shifts = pd.read_sql_query(shifts_query, conn, params=params)
     conn.close()
 
-    position_icons = {
-        "社長": "👑", "役職者": "🥈", "社員": "🥉", "バイト": "👦🏿"
-    }
-
-    current_user_icon = position_icons.get(st.session_state.user_position, '')
-    current_user_display_name = f"{current_user_icon} {st.session_state.user_name}"
-
-    users['display_name'] = users.apply(
-        lambda row: f"{position_icons.get(row['position'], '')} {row['name']}",
-        axis=1
-    )
+    position_icons = {"社長": "👑", "役職者": "🥈", "社員": "🥉", "バイト": "👦🏿"}
+    current_user_display_name = f"{position_icons.get(st.session_state.user_position, '')} {st.session_state.user_name}"
+    users['display_name'] = users.apply(lambda row: f"{position_icons.get(row['position'], '')} {row['name']}", axis=1)
 
     df = pd.DataFrame()
     df['従業員名'] = users['display_name']
-
     date_range = pd.to_datetime(pd.date_range(start=first_day, end=last_day))
     for d in date_range:
         day_str = d.strftime('%d')
@@ -673,7 +649,6 @@ def show_shift_table_page():
         df[col_name] = ""
 
     df.set_index(users['id'], inplace=True)
-
     for _, row in shifts.iterrows():
         user_id = row['user_id']
         if user_id in df.index:
@@ -700,7 +675,9 @@ def show_shift_table_page():
 
     styled_df = df.style.apply(highlight_user, name_to_highlight=current_user_display_name, subset=['従業員名'])
 
-date_column_config = {
+    # --- ★★★ 修正点: column_configで幅を指定 ★★★ ---
+    # 日付列の幅を"medium"に設定する辞書を作成
+    date_column_config = {
         col: st.column_config.Column(width="medium") 
         for col in df.columns if col != '従業員名'
     }
@@ -711,7 +688,6 @@ date_column_config = {
         hide_index=True,
         column_config=date_column_config # 作成した設定を渡す
     )
-
 def show_direct_message_page():
     selected_user_id = st.session_state.get('dm_selected_user_id')
 
