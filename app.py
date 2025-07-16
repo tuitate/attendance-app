@@ -348,8 +348,6 @@ def show_login_register_page():
                         st.error("その従業員IDは既に使用されています。")
 
 def show_timecard_page():
-    # --- ★★★ 修正点: ダイアログ表示中は自動更新を停止する ★★★ ---
-    # メッセージ送信ダイアログが表示されていない場合のみ、自動更新を実行する
     if not st.session_state.get('show_broadcast_dialog', False):
         st_autorefresh(interval=1000, key="clock_refresh")
 
@@ -433,9 +431,7 @@ def show_timecard_page():
     display_work_summary()
 
 def render_shift_edit_form(target_date):
-    """ページ内にシフト編集フォームを描画する関数"""
     with st.container(border=True):
-        # フォームのヘッダーと閉じるボタン
         col1, col2 = st.columns([4, 1])
         with col1:
             st.subheader(f"🗓️ {target_date.strftime('%Y年%m月%d日')} のシフト登録・編集")
@@ -444,7 +440,6 @@ def render_shift_edit_form(target_date):
                 st.session_state.editing_date = None
                 st.rerun()
 
-        # 編集対象の日付の既存シフトを取得
         conn = get_db_connection()
         existing_shift = conn.execute(
             "SELECT id, start_datetime, end_datetime FROM shifts WHERE user_id = ? AND date(start_datetime) = ?",
@@ -452,7 +447,6 @@ def render_shift_edit_form(target_date):
         ).fetchone()
         conn.close()
 
-        # 既存シフトがあればその日時を、なければ前回の入力時間をデフォルト値に設定
         if existing_shift:
             default_start = datetime.fromisoformat(existing_shift['start_datetime'])
             default_end = datetime.fromisoformat(existing_shift['end_datetime'])
@@ -462,7 +456,6 @@ def render_shift_edit_form(target_date):
             default_start = datetime.combine(target_date, st.session_state.last_shift_start_time)
             default_end = datetime.combine(default_end_date, st.session_state.last_shift_end_time)
 
-        # st.formを使用して入力とボタンをグループ化
         with st.form(key=f"shift_form_{target_date}", clear_on_submit=True):
             c1, c2 = st.columns(2)
             with c1:
@@ -475,14 +468,12 @@ def render_shift_edit_form(target_date):
             start_datetime = datetime.combine(start_date_input, start_time_input)
             end_datetime = datetime.combine(end_date_input, end_time_input)
 
-            # 登録・削除ボタン
             btn_col1, btn_col2, _ = st.columns([1, 1, 3])
             with btn_col1:
                 save_button = st.form_submit_button("登録・更新", use_container_width=True, type="primary")
             with btn_col2:
                 delete_button = st.form_submit_button("削除", use_container_width=True)
 
-        # 登録・更新ボタンが押された場合の処理
         if save_button:
             if start_datetime >= end_datetime:
                 st.error("出勤日時は退勤日時より前に設定してください。")
@@ -499,10 +490,9 @@ def render_shift_edit_form(target_date):
                 st.session_state.last_shift_start_time = start_datetime.time()
                 st.session_state.last_shift_end_time = end_datetime.time()
                 st.toast("シフトを保存しました！", icon="✅")
-                st.session_state.editing_date = None  # フォームを閉じる
+                st.session_state.editing_date = None
                 st.rerun()
 
-        # 削除ボタンが押された場合の処理
         if delete_button:
             if existing_shift:
                 conn = get_db_connection()
@@ -510,7 +500,7 @@ def render_shift_edit_form(target_date):
                 conn.commit()
                 conn.close()
                 st.toast("シフトを削除しました。", icon="🗑️")
-                st.session_state.editing_date = None  # フォームを閉じる
+                st.session_state.editing_date = None 
                 st.rerun()
             else:
                 st.warning("削除するシフトが登録されていません。")
@@ -518,21 +508,16 @@ def render_shift_edit_form(target_date):
 def show_shift_management_page():
     st.header("シフト管理")
 
-    # 編集中の日付がある場合はフォームを、ない場合はカレンダーを表示
     if st.session_state.get('editing_date'):
-        # editing_dateに日付がセットされている場合、編集フォームを描画
         render_shift_edit_form(st.session_state.editing_date)
 
     else:
-        # editing_dateがNoneの場合、カレンダーを表示
         st.info("カレンダーの日付または登録済みのシフトをクリックして編集フォームを開きます。")
 
-        # データベースからシフト情報を取得
         conn = get_db_connection()
         shifts = conn.execute('SELECT id, start_datetime, end_datetime FROM shifts WHERE user_id = ?', (st.session_state.user_id,)).fetchall()
         conn.close()
 
-        # カレンダー表示用のイベントリストを作成
         events = []
         for shift in shifts:
             start_dt = datetime.fromisoformat(shift['start_datetime'])
@@ -546,12 +531,11 @@ def show_shift_management_page():
                 "color": color, "id": shift['id'], "allDay": False
             })
 
-        col1, col2 = st.columns([3, 2]) # 2列レイアウトに変更
+        col1, col2 = st.columns([3, 2])
         with col1:
             st.subheader(st.session_state.calendar_date.strftime('%Y年 %m月'), anchor=False, divider='blue')
 
         with col2:
-            # ボタンをグループ化するための列
             btn_col1, btn_col2 = st.columns(2)
             with btn_col1:
                 if st.button("先月", use_container_width=True):
@@ -562,7 +546,6 @@ def show_shift_management_page():
                     st.session_state.calendar_date += relativedelta(months=1)
                     st.rerun()
 
-        # カレンダーコンポーネント
         calendar_result = calendar(
             events=events,
             options={
@@ -573,7 +556,6 @@ def show_shift_management_page():
             key=f"calendar_{st.session_state.calendar_date.year}_{st.session_state.calendar_date.month}"
         )
 
-        # カレンダーがクリックされたときの処理
         if isinstance(calendar_result, dict):
             clicked_date = None
             if 'dateClick' in calendar_result:
@@ -587,7 +569,6 @@ def show_shift_management_page():
                 if clicked_date < date.today():
                     st.warning("過去の日付のシフトは変更できません。")
                 else:
-                    # 編集する日付をセッションに保存して再描画（フォームが表示される）
                     st.session_state.editing_date = clicked_date
                     st.rerun()
 
@@ -604,8 +585,6 @@ def show_shift_table_page():
         if st.button("来月", key="table_next"):
             st.session_state.calendar_date += relativedelta(months=1)
             st.rerun()
-
-    # --- CSSのコードブロックは完全に削除します ---
 
     first_day = st.session_state.calendar_date.replace(day=1)
     last_day = first_day.replace(day=py_calendar.monthrange(first_day.year, first_day.month)[1])
@@ -666,25 +645,21 @@ def show_shift_table_page():
         return styles
 
     styled_df = df.style.apply(highlight_user, name_to_highlight=current_user_display_name, subset=['従業員名'])
-    
-    # --- ★★★ ここから修正 ★★★ ---
-    # 列の設定を作成
+
     column_config = {
-        # 従業員名の列の幅を "large" に設定
         "従業員名": st.column_config.Column(width="medium")
     }
-    # 従業員名以外のすべての列の幅を "small" に設定
+
     for col in df.columns:
         if col != "従業員名":
             column_config[col] = st.column_config.Column(width="medium")
     
     st.dataframe(
         styled_df,
-        use_container_width=True, # この設定を再度有効にする
+        use_container_width=True,
         hide_index=True,
-        column_config=column_config # 作成した設定を渡す
+        column_config=column_config
     )
-    # --- ★★★ ここまで修正 ★★★ ---
     
 def show_direct_message_page():
     selected_user_id = st.session_state.get('dm_selected_user_id')
@@ -775,7 +750,6 @@ def show_messages_page():
     else:
         for msg in messages:
             with st.container(border=True):
-                # ★★★ The following lines are corrected to use indexes ★★★
                 created_at_str = msg[2]
                 is_confirming_this_message = st.session_state.get('confirming_delete_message_created_at') == created_at_str
 
@@ -800,17 +774,17 @@ def show_messages_page():
                     with msg_col2:
                         content_str = msg[1]
                         is_broadcast = content_str and content_str.startswith("**【お知らせ】")
-                        if is_broadcast and msg[6] == st.session_state.user_id: # sender_id is at index 6
-                            if st.button("🗑️ 削除", key=f"delete_{msg[0]}", use_container_width=True): # id is at index 0
+                        if is_broadcast and msg[6] == st.session_state.user_id:
+                            if st.button("🗑️ 削除", key=f"delete_{msg[0]}", use_container_width=True):
                                 st.session_state.confirming_delete_message_created_at = created_at_str
                                 st.rerun()
                     
-                    if msg[1]: # content is at index 1
+                    if msg[1]:
                         st.markdown(msg[1])
-                    if msg[3]: # file_base64 is at index 3
+                    if msg[3]:
                         file_bytes = base64.b64decode(msg[3])
-                        file_type = msg[5] # file_type is at index 5
-                        file_name = msg[4] or "downloaded_file" # file_name is at index 4
+                        file_type = msg[5]
+                        file_name = msg[4] or "downloaded_file"
 
                         if file_type and file_type.startswith("image/"):
                             st.image(file_bytes)
@@ -869,18 +843,16 @@ def confirm_delete_user_dialog(user_id, user_name):
     
     col1, col2 = st.columns(2)
     with col1:
-        # 「はい」を押したらユーザーを削除し、確認状態を解除
         if st.button("はい、削除します", key=f"confirm_del_{user_id}", use_container_width=True, type="primary"):
             if delete_user(user_id):
                 st.toast(f"「{user_name}」さんを削除しました。", icon="✅")
             else:
                 st.error("削除中にエラーが発生しました。")
-            st.session_state.confirming_delete_user_id = None # 確認状態を解除
+            st.session_state.confirming_delete_user_id = None
             st.rerun()
     with col2:
-        # 「いいえ」を押したら確認状態を解除
         if st.button("いいえ", key=f"cancel_del_{user_id}", use_container_width=True):
-            st.session_state.confirming_delete_user_id = None # 確認状態を解除
+            st.session_state.confirming_delete_user_id = None
             st.rerun()
 
 def show_employee_information_page():
@@ -905,27 +877,22 @@ def show_employee_information_page():
         else:
             for user in all_users:
                 with st.container(border=True):
-                    # --- ★★★ レイアウト修正: ラベルと値を1行で表示 ★★★ ---
                     st.write(f"**名前:** {user['name']}")
                     st.write(f"**役職:** {user['position']}")
                     st.write(f"**従業員ID:** {user['employee_id']}")
                     st.write(f"**登録日時:** {datetime.fromisoformat(user['created_at']).strftime('%Y年%m月%d日 %H:%M')}")
 
-                    # 自分以外のユーザーには削除機能を表示
                     if user['id'] != st.session_state.user_id:
-                        st.divider() # 区切り線
+                        st.divider()
                         
-                        # 削除ボタン
                         if st.button("この従業員を削除", key=f"delete_{user['id']}", use_container_width=True, type="primary"):
                             st.session_state.confirming_delete_user_id = user['id']
                             st.rerun()
 
-                        # --- ★★★ 表示位置修正: 確認メッセージをカード内に表示 ★★★ ---
-                        # 現在のユーザーが削除確認対象の場合、ここにメッセージを表示する
                         if st.session_state.get('confirming_delete_user_id') == user['id']:
                             confirm_delete_user_dialog(user['id'], user['name'])
                 
-                st.write("") # カード間のスペース
+                st.write("")
 
     except Exception as e:
         st.error(f"従業員情報の読み込み中にエラーが発生しました: {e}")
@@ -1238,7 +1205,6 @@ def main():
     if not st.session_state.get('logged_in'):
         show_login_register_page()
     else:
-        # データベースから未読件数などを取得
         conn = get_db_connection()
         current_user_id = st.session_state.user_id
         broadcast_unread_count = conn.execute("SELECT COUNT(*) FROM messages WHERE user_id = ? AND is_read = 0 AND message_type IN ('BROADCAST', 'SYSTEM')", (current_user_id,)).fetchone()[0]
@@ -1247,7 +1213,6 @@ def main():
         unread_dm_senders = conn.execute("SELECT DISTINCT u.id, u.name FROM messages m JOIN users u ON m.sender_id = u.id WHERE m.user_id = ? AND m.is_read = 0 AND m.message_type = 'DIRECT'", (current_user_id,)).fetchall()
         conn.close()
 
-        # 新着メッセージの通知
         if unread_dm_senders:
             with st.container(border=True):
                 st.info("🔔 新着メッセージがあります！")
@@ -1256,7 +1221,6 @@ def main():
                         st.session_state.dm_selected_user_id = sender['id']
                         st.info("下の「DM」タブを開いてください。")
 
-        # ページの定義
         ordered_page_keys = ["タイムカード", "シフト管理", "シフト表", "出勤状況", "全体メッセージ", "ダイレクトメッセージ", "ユーザー情報"]
         if st.session_state.user_position in ["社長", "役職者"]:
             ordered_page_keys.insert(1, "従業員情報")
@@ -1274,21 +1238,17 @@ def main():
             "ユーザー登録": {"icon": "📝", "func": show_user_registration_page}
         }
 
-        # タブのタイトルリストを作成
         tab_titles = []
         for key in ordered_page_keys:
             info = page_definitions.get(key)
             if info:
-                # アイコンと未読マークをタイトルに追加
                 label = f"{info['icon']} {key}"
                 if info.get('unread', 0) > 0:
                     label += " 🔴"
                 tab_titles.append(label)
 
-        # st.tabsでタブを描画
         tabs = st.tabs(tab_titles)
 
-        # 各タブの中身を描画
         for i, tab in enumerate(tabs):
             with tab:
                 page_key_to_render = ordered_page_keys[i]
@@ -1299,7 +1259,6 @@ def main():
             st.title(" ")
             st.info(f"**名前:** {st.session_state.user_name}\n\n**従業員ID:** {get_user_employee_id(st.session_state.user_id)}")
             if st.button("ログアウト", use_container_width=True):
-                # セッションステートをクリアしてログアウト
                 for key in list(st.session_state.keys()):
                     del st.session_state[key]
                 st.rerun()
