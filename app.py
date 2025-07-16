@@ -605,11 +605,22 @@ def show_shift_table_page():
             st.session_state.calendar_date += relativedelta(months=1)
             st.rerun()
 
-    # --- ★★★ 修正点: 以下のCSS関連のコードを削除 ★★★ ---
-    # selected_date = st.session_state.calendar_date
-    # desired_width_pixels = 100
-    # css = f"""..."""
-    # st.markdown(css, unsafe_allow_html=True)
+    # --- ★★★ ここから修正 ★★★ ---
+    # 日付の列の幅を指定します。
+    desired_width_pixels = 80 
+    css = f"""
+    <style>
+        /* 1列目（従業員名）以外の全ての列に幅を指定します */
+        .stDataFrame th:not(:first-child), 
+        .stDataFrame td:not(:first-child) {{
+            min-width: {desired_width_pixels}px !important;
+            max-width: {desired_width_pixels}px !important;
+            width: {desired_width_pixels}px !important;
+        }}
+    </style>
+    """
+    st.markdown(css, unsafe_allow_html=True)
+    # --- ★★★ ここまで修正 ★★★ ---
 
     first_day = st.session_state.calendar_date.replace(day=1)
     last_day = first_day.replace(day=py_calendar.monthrange(first_day.year, first_day.month)[1])
@@ -674,20 +685,13 @@ def show_shift_table_page():
         return styles
 
     styled_df = df.style.apply(highlight_user, name_to_highlight=current_user_display_name, subset=['従業員名'])
-
-    # --- ★★★ 修正点: column_configで幅を指定 ★★★ ---
-    # 日付列の幅を"medium"に設定する辞書を作成
-    date_column_config = {
-        col: st.column_config.Column(width="medium") 
-        for col in df.columns if col != '従業員名'
-    }
-
+    
     st.dataframe(
         styled_df,
         use_container_width=True,
-        hide_index=True,
-        column_config=date_column_config # 作成した設定を渡す
+        hide_index=True
     )
+    
 def show_direct_message_page():
     selected_user_id = st.session_state.get('dm_selected_user_id')
 
