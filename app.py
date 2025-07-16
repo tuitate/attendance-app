@@ -907,39 +907,27 @@ def show_employee_information_page():
         else:
             for user in all_users:
                 with st.container(border=True):
-                    # --- ★★★ レイアウト修正箇所 ★★★ ---
-                    # 各項目ごとに列を作成して、ラベルと値を横並びにする
-                    c1, c2 = st.columns([1, 2])
-                    with c1: st.write("**名前:**")
-                    with c2: st.write(user['name'])
-                    
-                    c1, c2 = st.columns([1, 2])
-                    with c1: st.write("**役職:**")
-                    with c2: st.write(user['position'])
+                    # --- ★★★ レイアウト修正: ラベルと値を1行で表示 ★★★ ---
+                    st.write(f"**名前:** {user['name']}")
+                    st.write(f"**役職:** {user['position']}")
+                    st.write(f"**従業員ID:** {user['employee_id']}")
+                    st.write(f"**登録日時:** {datetime.fromisoformat(user['created_at']).strftime('%Y年%m月%d日 %H:%M')}")
 
-                    c1, c2 = st.columns([1, 2])
-                    with c1: st.write("**従業員ID:**")
-                    with c2: st.write(user['employee_id'])
-
-                    c1, c2 = st.columns([1, 2])
-                    with c1: st.write("**登録日時:**")
-                    with c2: st.write(datetime.fromisoformat(user['created_at']).strftime('%Y年%m月%d日 %H:%M'))
-
-                    # --- 削除ボタンのロジック修正 ---
+                    # 自分以外のユーザーには削除機能を表示
                     if user['id'] != st.session_state.user_id:
+                        st.divider() # 区切り線
+                        
+                        # 削除ボタン
                         if st.button("この従業員を削除", key=f"delete_{user['id']}", use_container_width=True, type="primary"):
-                            # すぐにダイアログを呼ばず、セッションに削除対象IDを保存する
                             st.session_state.confirming_delete_user_id = user['id']
                             st.rerun()
 
+                        # --- ★★★ 表示位置修正: 確認メッセージをカード内に表示 ★★★ ---
+                        # 現在のユーザーが削除確認対象の場合、ここにメッセージを表示する
+                        if st.session_state.get('confirming_delete_user_id') == user['id']:
+                            confirm_delete_user_dialog(user['id'], user['name'])
+                
                 st.write("") # カード間のスペース
-        
-        # --- ★★★ 確認ダイアログを呼び出すロジックを追加 ★★★ ---
-        # 削除対象IDがセッションに保存されている場合のみ、確認ダイアログを呼び出す
-        if st.session_state.get('confirming_delete_user_id'):
-            user_to_delete = next((u for u in all_users if u['id'] == st.session_state.confirming_delete_user_id), None)
-            if user_to_delete:
-                confirm_delete_user_dialog(user_to_delete['id'], user_to_delete['name'])
 
     except Exception as e:
         st.error(f"従業員情報の読み込み中にエラーが発生しました: {e}")
