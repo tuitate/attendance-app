@@ -671,7 +671,7 @@ def show_shift_table_page():
     # 列の設定を作成
     column_config = {
         # 従業員名の列の幅を "large" に設定
-        "従業員名": st.column_config.Column(width="large")
+        "従業員名": st.column_config.Column(width="medium")
     }
     # 従業員名以外のすべての列の幅を "small" に設定
     for col in df.columns:
