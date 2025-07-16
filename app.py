@@ -582,10 +582,6 @@ def show_shift_management_page():
         
 def show_shift_table_page():
     st.header("月間シフト表")
-
-    # --- ★変更点①：この一行の数字を変えるだけで、全ての列幅が変更されます ---
-    column_width_pixels = 120  # 例: 120ピクセルに設定。この数値を変更してください。
-
     col1, col2, col3 = st.columns([1, 6, 1])
     with col1:
         if st.button("先月", key="table_prev"):
@@ -598,11 +594,18 @@ def show_shift_table_page():
             st.session_state.calendar_date += relativedelta(months=1)
             st.rerun()
 
-    # --- ★変更点②：CSSのコードブロックを完全に削除 ---
-    # css = """..."""
-    # st.markdown(css, unsafe_allow_html=True)
-
     selected_date = st.session_state.calendar_date
+    desired_width_pixels = 100
+    css = f"""
+    <style>
+        .stDataFrame th[data-testid="stDataFrameColumnHeader"], .stDataFrame td {{
+            min-width: {desired_width_pixels}px !important;
+            max-width: {desired_width_pixels}px !important;
+        }}
+    </style>
+    """
+    st.markdown(css, unsafe_allow_html=True)
+
     first_day = selected_date.replace(day=1)
     last_day = first_day.replace(day=py_calendar.monthrange(first_day.year, first_day.month)[1])
 
@@ -636,10 +639,17 @@ def show_shift_table_page():
     shifts = pd.read_sql_query(shifts_query, conn, params=params)
     conn.close()
 
-    position_icons = { "社長": "👑", "役職者": "🥈", "社員": "🥉", "バイト": "👦🏿" }
+    position_icons = {
+        "社長": "👑", "役職者": "🥈", "社員": "🥉", "バイト": "👦🏿"
+    }
+
     current_user_icon = position_icons.get(st.session_state.user_position, '')
     current_user_display_name = f"{current_user_icon} {st.session_state.user_name}"
-    users['display_name'] = users.apply(lambda row: f"{position_icons.get(row['position'], '')} {row['name']}", axis=1)
+
+    users['display_name'] = users.apply(
+        lambda row: f"{position_icons.get(row['position'], '')} {row['name']}",
+        axis=1
+    )
 
     df = pd.DataFrame()
     df['従業員名'] = users['display_name']
@@ -665,36 +675,20 @@ def show_shift_table_page():
             end_t = end_dt.strftime('%m/%d %H:%M') if start_dt.date() != end_dt.date() else end_dt.strftime('%H:%M')
             df.loc[user_id, col_name] = f"{start_t}～{end_t}"
 
-    df.reset_index(drop=True)
+    df.reset_index(drop=True, inplace=True)
     df.fillna('', inplace=True)
 
     def highlight_user(column, name_to_highlight):
         styles = [''] * len(column)
         try:
-            idx_pos = column.tolist().index(name_to_highlight)
-            styles = ['background-color: rgba(230, 243, 255, 0.6)' if i == idx_pos else '' for i in range(len(column))]
-        except ValueError:
+            idx_pos = column[column == name_to_highlight].index[0]
+            styles[idx_pos] = 'background-color: rgba(230, 243, 255, 0.6)'
+        except IndexError:
             pass
         return styles
 
-    styled_df = None
-
-    # --- ★変更点③：column_config を使って列の幅を定義 ---
-    column_config = {
-        "従業員名": st.column_config.TextColumn("従業員名", width="medium")
-    }
-    # 日付列のコンフィグを動的に生成
-    for col in df.columns:
-        if col != "従業員名":
-            # 上で設定したピクセル数を各列の幅に設定
-            column_config[col] = st.column_config.TextColumn(col, width=column_width_pixels)
-
-        st.dataframe(
-        styled_df,
-        use_container_width=True,
-        hide_index=True,
-        column_config=column_config
-    )
+    styled_df = df.style.apply(highlight_user, name_to_highlight=current_user_display_name, subset=['従業員名'])
+    st.dataframe(styled_df, use_container_width=True, hide_index=True)
 
     def highlight_user(column, name_to_highlight):
         styles = [''] * len(column)
