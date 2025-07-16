@@ -598,12 +598,12 @@ def show_shift_table_page():
     desired_width_pixels = 100
     css = """
     <style>
-        /* データフレームのデータセルを対象 */
-        .stDataFrame td {
-            /* 文字列が改行されるのを防ぐ (例: "02:00" と "～"で分かれないようにする) */
+        /* ヘッダーセル(th)とデータセル(td)の両方を対象にする */
+        .stDataFrame th, .stDataFrame td {
+            /* 文字列が改行されるのを防ぐ */
             white-space: nowrap;
-            /* 最低でも90ピクセルの幅を確保する */
-            min-width: 150px;
+            /* !important を付けて、他のスタイルに上書きされないよう最優先にする */
+            min-width: 120px !important;
         }
     </style>
     """
