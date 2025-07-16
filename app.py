@@ -605,31 +605,14 @@ def show_shift_table_page():
             st.session_state.calendar_date += relativedelta(months=1)
             st.rerun()
 
-    # この数値を変更すると、全ての列の幅が変わります
-    desired_width_pixels = 120 
-    css = f"""
-    <style>
-        /* 全ての列に同じ幅を指定します */
-        .stDataFrame th, 
-        .stDataFrame td {{
-            min-width: {desired_width_pixels}px !important;
-            max-width: {desired_width_pixels}px !important;
-            width: {desired_width_pixels}px !important;
-        }}
-    </style>
-    """
-    st.markdown(css, unsafe_allow_html=True)
+    # --- CSSのコードブロックは完全に削除します ---
 
     first_day = st.session_state.calendar_date.replace(day=1)
     last_day = first_day.replace(day=py_calendar.monthrange(first_day.year, first_day.month)[1])
 
     conn = get_db_connection()
     company_name = st.session_state.user_company
-
-    users_query = """
-        SELECT id, name, position FROM users WHERE company = ?
-        ORDER BY CASE position WHEN '社長' THEN 1 WHEN '役職者' THEN 2 ELSE 3 END, id
-    """
+    users_query = "SELECT id, name, position FROM users WHERE company = ? ORDER BY CASE position WHEN '社長' THEN 1 WHEN '役職者' THEN 2 ELSE 3 END, id"
     users = pd.read_sql_query(users_query, conn, params=(company_name,))
 
     if users.empty:
@@ -684,12 +667,24 @@ def show_shift_table_page():
 
     styled_df = df.style.apply(highlight_user, name_to_highlight=current_user_display_name, subset=['従業員名'])
     
-    # --- ★★★ 修正点 ★★★ ---
+    # --- ★★★ ここから修正 ★★★ ---
+    # 列の設定を作成
+    column_config = {
+        # 従業員名の列の幅を "large" に設定
+        "従業員名": st.column_config.Column(width="large")
+    }
+    # 従業員名以外のすべての列の幅を "small" に設定
+    for col in df.columns:
+        if col != "従業員名":
+            column_config[col] = st.column_config.Column(width="small")
+    
     st.dataframe(
         styled_df,
-        # use_container_width=True,  <-- この行を削除またはコメントアウト
-        hide_index=True
+        use_container_width=True, # この設定を再度有効にする
+        hide_index=True,
+        column_config=column_config # 作成した設定を渡す
     )
+    # --- ★★★ ここまで修正 ★★★ ---
     
 def show_direct_message_page():
     selected_user_id = st.session_state.get('dm_selected_user_id')
