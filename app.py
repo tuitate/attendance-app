@@ -561,7 +561,7 @@ def show_shift_management_page():
             events=events,
             options={
                 "headerToolbar": False, "initialDate": st.session_state.calendar_date.isoformat(),
-                "initialView": "dayGridMonth", "locale": "ja", "selectable": True, "height": "auto"
+                "initialView": "dayGridMonth", "locale": "ja", "selectable": True, "height": 700
             },
             custom_css=".fc-event-title { font-weight: 700; }",
             key=f"calendar_{st.session_state.calendar_date.year}_{st.session_state.calendar_date.month}"
