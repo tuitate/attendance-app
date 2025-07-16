@@ -677,7 +677,7 @@ def show_shift_table_page():
             pass
         return styles
 
-    styled_df = df.style.apply(highlight_user, name_to_highlight=current_user_display_name, subset=['従業員名'])
+    #styled_df = df.style.apply(highlight_user, name_to_highlight=current_user_display_name, subset=['従業員名'])
 
     # --- ★変更点③：column_config を使って列の幅を定義 ---
     column_config = {
@@ -688,6 +688,13 @@ def show_shift_table_page():
         if col != "従業員名":
             # 上で設定したピクセル数を各列の幅に設定
             column_config[col] = st.column_config.TextColumn(col, width=column_width_pixels)
+
+        st.dataframe(
+        styled_df,
+        use_container_width=True,
+        hide_index=True,
+        column_config=column_config
+    )
 
     def highlight_user(column, name_to_highlight):
         styles = [''] * len(column)
