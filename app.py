@@ -939,8 +939,6 @@ def show_user_registration_page():
 
 def show_work_status_page():
     st.header("出勤状況")
-    
-    # --- 上部の月間サマリー表示（変更なし） ---
     col1, col2, col3 = st.columns([1, 6, 1])
     with col1:
         if st.button("先月", key="status_prev"):
@@ -952,21 +950,19 @@ def show_work_status_page():
         if st.button("来月", key="status_next"):
             st.session_state.calendar_date += relativedelta(months=1)
             st.rerun()
-
     selected_month = st.session_state.calendar_date
     first_day_month = selected_month.replace(day=1)
     last_day_month = (first_day_month + relativedelta(months=1)) - timedelta(days=1)
-
     conn = get_db_connection()
+    # Row オブジェクトとしてデータを取得するために row_factory を設定
+    conn.row_factory = sqlite3.Row
     shifts_records = conn.execute("SELECT date(start_datetime) as work_date, start_datetime, end_datetime FROM shifts WHERE user_id = ? AND date(start_datetime) BETWEEN ? AND ?", (st.session_state.user_id, first_day_month.isoformat(), last_day_month.isoformat())).fetchall()
     shifts_dict = {row['work_date']: row for row in shifts_records}
     attendances = conn.execute("SELECT id, work_date, clock_in, clock_out FROM attendance WHERE user_id = ? AND work_date BETWEEN ? AND ?", (st.session_state.user_id, first_day_month.isoformat(), last_day_month.isoformat())).fetchall()
-
     total_scheduled_seconds = 0
     total_actual_work_seconds = 0
     total_break_seconds = 0
     total_overtime_seconds = 0
-
     for att in attendances:
         if att['clock_in'] and att['clock_out']:
             clock_in_dt = datetime.fromisoformat(att['clock_in'])
@@ -975,35 +971,26 @@ def show_work_status_page():
             breaks = conn.execute("SELECT break_start, break_end FROM breaks WHERE attendance_id = ?", (att['id'],)).fetchall()
             for br in breaks:
                 if br['break_start'] and br['break_end']:
-                    break_start_dt = datetime.fromisoformat(br['break_start'])
-                    break_end_dt = datetime.fromisoformat(br['break_end'])
-                    daily_break_seconds += (break_end_dt - break_start_dt).total_seconds()
-            
+                    daily_break_seconds += (datetime.fromisoformat(br['break_end']) - datetime.fromisoformat(br['break_start'])).total_seconds()
             net_daily_work_seconds = (clock_out_dt - clock_in_dt).total_seconds() - daily_break_seconds
             total_actual_work_seconds += net_daily_work_seconds
             total_break_seconds += daily_break_seconds
-
             daily_shift = shifts_dict.get(att['work_date'])
             if daily_shift:
                 scheduled_end_dt = datetime.fromisoformat(daily_shift['end_datetime']).replace(tzinfo=JST)
                 if clock_out_dt > scheduled_end_dt:
                     total_overtime_seconds += (clock_out_dt - scheduled_end_dt).total_seconds()
-
     for shift in shifts_dict.values():
         total_scheduled_seconds += (datetime.fromisoformat(shift['end_datetime']) - datetime.fromisoformat(shift['start_datetime'])).total_seconds()
-
     conn.close()
-
     def format_seconds_to_hours_minutes(seconds):
         hours, remainder = divmod(int(seconds), 3600)
         minutes, _ = divmod(remainder, 60)
         return f"{hours}時間 {minutes:02}分"
-
     scheduled_str = format_seconds_to_hours_minutes(total_scheduled_seconds)
     actual_str = format_seconds_to_hours_minutes(total_actual_work_seconds)
     break_str = format_seconds_to_hours_minutes(total_break_seconds)
     overtime_str = format_seconds_to_hours_minutes(total_overtime_seconds)
-
     st.divider()
     m_col1, m_col2 = st.columns(2)
     m_col3, m_col4 = st.columns(2)
@@ -1012,100 +999,40 @@ def show_work_status_page():
     m_col3.metric("合計休憩時間", break_str)
     m_col4.metric("時間外労働時間", overtime_str)
     st.divider()
-
-    # --- ★★★ ここからグラフ機能を追加 ★★★ ---
     st.subheader("📊 実働時間グラフ")
-
-    # グラフ描画のためのデータ取得と計算を行うヘルパー関数
-    def get_work_hours_data(start_date, end_date):
-        conn = get_db_connection()
-        work_data = {}
-        current_date = start_date
-        while current_date <= end_date:
-            work_data[current_date] = 0
-            current_date += timedelta(days=1)
-
-        query = "SELECT work_date, clock_in, clock_out, id FROM attendance WHERE user_id = ? AND work_date BETWEEN ? AND ?"
-        attendances = conn.execute(query, (st.session_state.user_id, start_date.isoformat(), end_date.isoformat())).fetchall()
-
-        for att in attendances:
-            if att['clock_in'] and att['clock_out']:
-                clock_in_dt = datetime.fromisoformat(att['clock_in'])
-                clock_out_dt = datetime.fromisoformat(att['clock_out'])
-                total_seconds = (clock_out_dt - clock_in_dt).total_seconds()
-                
-                breaks_query = "SELECT break_start, break_end FROM breaks WHERE attendance_id = ?"
-                breaks = conn.execute(breaks_query, (att['id'],)).fetchall()
-                break_seconds = 0
-                for br in breaks:
-                    if br['break_start'] and br['break_end']:
-                        break_seconds += (datetime.fromisoformat(br['break_end']) - datetime.fromisoformat(br['break_start'])).total_seconds()
-                
-                actual_work_hours = (total_seconds - break_seconds) / 3600
-                work_date = date.fromisoformat(att['work_date'])
-                work_data[work_date] = actual_work_hours
-        conn.close()
-        return work_data
-
-    # タブの作成
     tab7, tab30, tab_year = st.tabs(["過去7日間", "当月", "当年"])
-
     with tab7:
         st.write("直近の日曜日から土曜日までの実働時間を表示します。")
         today = date.today()
-        # 日曜日を週の始まりとする (Pythonでは月曜0, 日曜6)
         start_of_week = today - timedelta(days=(today.weekday() + 1) % 7)
         end_of_week = start_of_week + timedelta(days=6)
-        
         weekly_data = get_work_hours_data(start_of_week, end_of_week)
-        
         df_week = pd.DataFrame(list(weekly_data.values()), index=list(weekly_data.keys()), columns=['実働時間'])
-        # 曜日を日本語に変換
         weekday_jp = ["月", "火", "水", "木", "金", "土", "日"]
         df_week.index = [f"{d.strftime('%d日')}({weekday_jp[d.weekday()]})" for d in df_week.index]
-        
-        # Y軸の最大値を10の倍数に調整
-        max_hour_week = df_week['実働時間'].max()
-        y_max_week = (int(max_hour_week / 10) + 1) * 10 if max_hour_week > 0 else 10
         st.bar_chart(df_week, y='実働時間', height=400, use_container_width=True)
-
-
     with tab30:
         st.write("今月の実働時間を表示します。")
         today = date.today()
         start_of_month = today.replace(day=1)
         end_of_month = (start_of_month + relativedelta(months=1)) - timedelta(days=1)
-        
         monthly_data = get_work_hours_data(start_of_month, end_of_month)
-        
         df_month = pd.DataFrame(list(monthly_data.values()), index=list(monthly_data.keys()), columns=['実働時間'])
         df_month.index = [d.day for d in df_month.index]
-        
-        max_hour_month = df_month['実働時間'].max()
-        y_max_month = (int(max_hour_month / 10) + 1) * 10 if max_hour_month > 0 else 10
         st.bar_chart(df_month, y='実働時間', height=400, use_container_width=True)
-
-
     with tab_year:
         st.write("今年の月別実働時間を表示します。")
         today = date.today()
         start_of_year = today.replace(month=1, day=1)
         end_of_year = today.replace(month=12, day=31)
-        
         yearly_data = get_work_hours_data(start_of_year, end_of_year)
-        
         df_year = pd.DataFrame(list(yearly_data.items()), columns=['日付', '実働時間'])
         df_year['月'] = df_year['日付'].apply(lambda d: d.month)
         monthly_total = df_year.groupby('月')['実働時間'].sum()
-        
-        # 1月から12月まで全ての月を揃える
         all_months = pd.DataFrame(index=range(1, 13))
         all_months['実働時間'] = monthly_total
         all_months.fillna(0, inplace=True)
         all_months.index = [f"{m}月" for m in all_months.index]
-
-        max_hour_year = all_months['実働時間'].max()
-        y_max_year = (int(max_hour_year / 10) + 1) * 10 if max_hour_year > 0 else 10
         st.bar_chart(all_months, y='実働時間', height=400, use_container_width=True)
 
 def record_clock_in():
