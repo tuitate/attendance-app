@@ -911,25 +911,31 @@ def show_employee_information_page():
         if not all_users:
             st.warning("まだ従業員が登録されていません。")
         else:
-            header_cols = st.columns([2, 2, 2, 3, 1])
-            header_cols[0].write("**名前**")
-            header_cols[1].write("**役職**")
-            header_cols[2].write("**従業員ID**")
-            header_cols[3].write("**登録日時**")
-            st.divider()
-
+            # --- ★★★ ここからレイアウトを修正 ★★★ ---
+            # 従業員ごとにループして情報をカード表示する
             for user in all_users:
-                cols = st.columns([2, 2, 2, 3, 1])
-                cols[0].write(user['name'])
-                cols[1].write(user['position'])
-                cols[2].write(user['employee_id'])
-                cols[3].write(datetime.fromisoformat(user['created_at']).strftime('%Y年%m月%d日 %H:%M'))
+                with st.container(border=True):
+                    # st.columnsを使ってラベルとデータを横並びにする
+                    col1, col2 = st.columns([1, 2])
+                    with col1:
+                        st.write("**名前:**")
+                        st.write("**役職:**")
+                        st.write("**従業員ID:**")
+                        st.write("**登録日時:**")
+                    with col2:
+                        st.write(user['name'])
+                        st.write(user['position'])
+                        st.write(user['employee_id'])
+                        st.write(datetime.fromisoformat(user['created_at']).strftime('%Y年%m月%d日 %H:%M'))
 
-                if user['id'] != st.session_state.user_id:
-                    with cols[4]:
-                        if st.button("削除", key=f"delete_{user['id']}", use_container_width=True):
+                    # 自分以外のユーザーには削除ボタンを表示
+                    if user['id'] != st.session_state.user_id:
+                        if st.button("この従業員を削除", key=f"delete_{user['id']}", use_container_width=True, type="primary"):
+                            # 削除確認ダイアログのロジック
                             confirm_delete_user_dialog(user['id'], user['name'])
-                st.divider()
+
+                st.write("") # カード間のスペース
+            # --- ★★★ ここまでレイアウトを修正 ★★★ ---
 
     except Exception as e:
         st.error(f"従業員情報の読み込み中にエラーが発生しました: {e}")
