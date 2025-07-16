@@ -1240,8 +1240,23 @@ def display_work_summary():
                 st.session_state.last_clock_out_reminder_date = today_str
                 
 def main():
-    """メインのアプリケーションロジック（ボトムナビゲーション＆スワイプ機能つき）"""
+    """メインのアプリケーションロジック（ボトムナビゲーション＆スワイプ最終版）"""
     st.set_page_config(layout="wide")
+
+    # --- アプリ全体のスタイルとサイドバー非表示化CSSを最初に適用 ---
+    st.markdown("""
+        <style>
+            /* サイドバーを完全に非表示にする */
+            [data-testid="stSidebar"] {
+                display: none;
+            }
+            /* メインコンテンツの上下の余白を調整 */
+            .main .block-container {
+                padding-top: 2rem;
+                padding-bottom: 85px !important; /* ナビゲーションバーの高さ分 */
+            }
+        </style>
+    """, unsafe_allow_html=True)
 
     init_db()
     init_session_state()
@@ -1252,13 +1267,11 @@ def main():
         # --- 1. ページ情報の定義 ---
         conn = get_db_connection()
         current_user_id = st.session_state.user_id
-        # 未読数を取得
         broadcast_unread_count = conn.execute("SELECT COUNT(*) FROM messages WHERE user_id = ? AND is_read = 0 AND message_type IN ('BROADCAST', 'SYSTEM')", (current_user_id,)).fetchone()[0]
         dm_unread_count = conn.execute("SELECT COUNT(*) FROM messages WHERE user_id = ? AND is_read = 0 AND message_type = 'DIRECT'", (current_user_id,)).fetchone()[0]
         unread_dm_senders = conn.execute("SELECT DISTINCT u.id, u.name FROM messages m JOIN users u ON m.sender_id = u.id WHERE m.user_id = ? AND m.is_read = 0 AND message_type = 'DIRECT'", (current_user_id,)).fetchall()
         conn.close()
 
-        # 全てのページをアイコンと共に辞書で管理
         page_definitions = {
             "タイムカード": {"icon": "⏰"}, "シフト管理": {"icon": "🗓️"}, "シフト表": {"icon": "📊"},
             "出勤状況": {"icon": "📈"}, "全体メッセージ": {"icon": "📢", "unread": broadcast_unread_count > 0},
@@ -1266,7 +1279,6 @@ def main():
             "従業員情報": {"icon": "👥"}, "ユーザー登録": {"icon": "📝"}
         }
         
-        # 表示するページの順序をリストで定義
         ordered_page_keys = ["タイムカード", "シフト管理", "シフト表", "出勤状況", "全体メッセージ", "ダイレクトメッセージ", "ユーザー情報"]
         if st.session_state.user_position in ["社長", "役職者"]:
             ordered_page_keys.insert(1, "従業員情報")
@@ -1327,11 +1339,11 @@ def main():
         else:
             show_timecard_page()
 
-        # --- 5. ボトムナビゲーションバーとスワイプ機能の描画 (修正箇所) ---
+        # --- 5. ボトムナビゲーションバーとスワイプ機能の描画 ---
         nav_items_html = ""
         for page_key in ordered_page_keys:
             info = page_definitions.get(page_key)
-            if info: # 安全のためチェック
+            if info:
                 is_active = "active" if page_key == page_to_show else ""
                 has_unread = "unread" if info.get('unread') else ""
                 nav_items_html += f"""
@@ -1342,71 +1354,54 @@ def main():
                     </a>
                 """
 
-        # CSS、HTML、JavaScriptを分離して注入する
-        css_style = """
-        <style>
-            .bottom-nav {
-                position: fixed; bottom: 0; left: 0; width: 100%;
-                background-color: #1a1a1a; border-top: 1px solid #333;
-                display: flex; justify-content: space-around; align-items: stretch;
-                padding: 5px 0; z-index: 999;
-            }
-            .nav-item {
-                display: flex; flex-direction: column; align-items: center;
-                justify-content: center; text-decoration: none; color: #888;
-                flex-grow: 1; padding: 5px 0; position: relative;
-            }
-            .nav-item.active { color: #00aaff; }
-            .nav-icon { font-size: 24px; }
-            .nav-label { font-size: 10px; margin-top: 2px; }
-            .unread-dot {
-                position: absolute; top: 5px; right: 15px;
-                width: 8px; height: 8px; background-color: #ff4b4b;
-                border-radius: 50%;
-            }
-            .main .block-container { padding-bottom: 80px !important; }
-        </style>
+        nav_bar_component = f"""
+            <style>
+                .bottom-nav {{
+                    position: fixed; bottom: 0; left: 0; width: 100%;
+                    background-color: #0E1117; border-top: 1px solid #262730;
+                    display: flex; justify-content: space-around; align-items: stretch;
+                    padding: 5px 0; z-index: 9999;
+                }}
+                .nav-item {{
+                    display: flex; flex-direction: column; align-items: center;
+                    justify-content: center; text-decoration: none; color: #FAFAFA;
+                    flex-grow: 1; padding: 5px 0; position: relative; opacity: 0.6;
+                }}
+                .nav-item.active {{ color: #1E90FF; opacity: 1.0; }}
+                .nav-icon {{ font-size: 24px; }}
+                .nav-label {{ font-size: 10px; margin-top: 2px; font-weight: bold; }}
+                .unread-dot {{
+                    position: absolute; top: 5px; right: calc(50% - 20px);
+                    width: 8px; height: 8px; background-color: #ff4b4b;
+                    border-radius: 50%;
+                }}
+            </style>
+            <nav class="bottom-nav">
+                {nav_items_html}
+            </nav>
+            <script>
+                let touchstartX = 0, touchendX = 0, touchstartY = 0, touchendY = 0;
+                const gestureZone = document.querySelector('.main');
+                if (gestureZone) {{
+                    gestureZone.addEventListener('touchstart', e => {{
+                        touchstartX = e.changedTouches[0].screenX;
+                        touchstartY = e.changedTouches[0].screenY;
+                    }}, {{passive: true}});
+                    gestureZone.addEventListener('touchend', e => {{
+                        touchendX = e.changedTouches[0].screenX;
+                        touchendY = e.changedTouches[0].screenY;
+                        const deltaX = touchendX - touchstartX;
+                        const deltaY = touchendY - touchstartY;
+                        if (Math.abs(deltaX) > Math.abs(deltaY) + 30 && Math.abs(deltaX) > 50) {{
+                            const direction = (touchendX < touchstartX) ? 'left' : 'right';
+                            const url = new URL(window.location);
+                            url.searchParams.set('swipe', direction);
+                            url.searchParams.set('v', Date.now());
+                            window.location.href = url.href;
+                        }}
+                    }}, {{passive: true}});
+                }}
+            </script>
         """
-        
-        nav_html = f'<nav class="bottom-nav">{nav_items_html}</nav>'
-        
-        swipe_js = """
-        <script>
-            let touchstartX = 0, touchendX = 0, touchstartY = 0, touchendY = 0;
-            const gestureZone = document.querySelector('.main');
-            if (gestureZone) {
-                gestureZone.addEventListener('touchstart', e => {
-                    touchstartX = e.changedTouches[0].screenX;
-                    touchstartY = e.changedTouches[0].screenY;
-                }, {passive: true});
-                gestureZone.addEventListener('touchend', e => {
-                    touchendX = e.changedTouches[0].screenX;
-                    touchendY = e.changedTouches[0].screenY;
-                    const deltaX = touchendX - touchstartX;
-                    const deltaY = touchendY - touchstartY;
-                    if (Math.abs(deltaX) > Math.abs(deltaY) + 30 && Math.abs(deltaX) > 50) {
-                        const direction = (touchendX < touchstartX) ? 'left' : 'right';
-                        const url = new URL(window.location);
-                        url.searchParams.set('swipe', direction);
-                        url.searchParams.set('v', Date.now());
-                        window.location.href = url.href;
-                    }
-                }, {passive: true});
-            }
-        </script>
-        """
+        st.markdown(nav_bar_component, unsafe_allow_html=True)
 
-        # st.markdownを使って、3つの要素を結合してページに注入
-        st.markdown(css_style + nav_html + swipe_js, unsafe_allow_html=True)
-        
-        # サイドバーはログアウトボタンのみ表示
-        with st.sidebar:
-            st.title(" ") 
-            st.info(f"**名前:** {st.session_state.user_name}\n\n**従業員ID:** {get_user_employee_id(st.session_state.user_id)}")
-            if st.button("ログアウト", use_container_width=True):
-                for key in st.session_state.keys():
-                    del st.session_state[key]
-                st.rerun()
-
-if __name__ == "__main__":
-    main()
