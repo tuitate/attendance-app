@@ -1240,7 +1240,7 @@ def display_work_summary():
                 st.session_state.last_clock_out_reminder_date = today_str
                 
 def main():
-    """メインのアプリケーションロジック"""
+    """メインのアプリケーションロジック（トップナビゲーション＆スワイプ機能つき）"""
     st.set_page_config(layout="wide")
 
     init_db()
@@ -1249,120 +1249,107 @@ def main():
     if not st.session_state.get('logged_in'):
         show_login_register_page()
     else:
-        # --- スワイプナビゲーション機能 ---
-        # 1. スワイプを検知するためのJavaScriptをページに埋め込む
-        swipe_js = """
-        <script>
-            let touchstartX = 0;
-            let touchendX = 0;
-            let touchstartY = 0;
-            let touchendY = 0;
-            let swiped = false;
-            const gestureZone = document.body;
-
-            gestureZone.addEventListener('touchstart', function(event) {
-                touchstartX = event.changedTouches[0].screenX;
-                touchstartY = event.changedTouches[0].screenY;
-                swiped = false;
-            }, {passive: true});
-
-            gestureZone.addEventListener('touchend', function(event) {
-                if (swiped) return;
-                touchendX = event.changedTouches[0].screenX;
-                touchendY = event.changedTouches[0].screenY;
-                handleGesture();
-            }, {passive: true});
-
-            function handleGesture() {
-                const deltaX = touchendX - touchstartX;
-                const deltaY = touchendY - touchstartY;
-
-                // 縦スクロールではなく、明確な横スワイプのみを検知
-                if (Math.abs(deltaX) > Math.abs(deltaY) + 30) {
-                    if (Math.abs(deltaX) > 50) { // 50px以上のスワイプを検知
-                        swiped = true;
-                        if (touchendX < touchstartX) {
-                            // 左スワイプ -> 次のページへ
-                            window.location.search = `?swipe=left&v=${Date.now()}`;
-                        } else {
-                            // 右スワイプ -> 前のページへ
-                            window.location.search = `?swipe=right&v=${Date.now()}`;
-                        }
-                    }
-                }
-            }
-        </script>
-        """
-        st.markdown(swipe_js, unsafe_allow_html=True)
-
-        # 2. ページオプションのリストを作成 (既存のロジック)
+        # --- 1. ページ情報の定義 ---
         conn = get_db_connection()
         current_user_id = st.session_state.user_id
         broadcast_unread_count = conn.execute("SELECT COUNT(*) FROM messages WHERE user_id = ? AND is_read = 0 AND message_type IN ('BROADCAST', 'SYSTEM')", (current_user_id,)).fetchone()[0]
         dm_unread_count = conn.execute("SELECT COUNT(*) FROM messages WHERE user_id = ? AND is_read = 0 AND message_type = 'DIRECT'", (current_user_id,)).fetchone()[0]
         conn.close()
 
-        broadcast_message_label = "全体メッセージ"
-        if broadcast_unread_count > 0:
-            broadcast_message_label = f"全体メッセージ 🔴 ({broadcast_unread_count})"
-        dm_label = "ダイレクトメッセージ"
-        if dm_unread_count > 0:
-            dm_label = "ダイレクトメッセージ 🔴"
-
-        page_options = ["タイムカード", "シフト管理", "シフト表", "出勤状況", broadcast_message_label, dm_label, "ユーザー情報"]
+        # 全てのページを辞書で管理
+        page_definitions = {
+            "タイムカード": {"label": "タイムカード"},
+            "シフト管理": {"label": "シフト管理"},
+            "シフト表": {"label": "シフト表"},
+            "出勤状況": {"label": "出勤状況"},
+            "全体メッセージ": {"label": "全体メッセージ", "unread": broadcast_unread_count},
+            "ダイレクトメッセージ": {"label": "DM", "unread": dm_unread_count},
+            "ユーザー情報": {"label": "ユーザー情報"}
+        }
+        
+        # 役職に応じてページを追加
+        admin_pages = {}
         if st.session_state.user_position in ["社長", "役職者"]:
-            page_options.insert(1, "従業員情報")
-            page_options.insert(1, "ユーザー登録")
+            admin_pages["従業員情報"] = {"label": "従業員情報"}
+            admin_pages["ユーザー登録"] = {"label": "ユーザー登録"}
+        
+        # 表示するページの順序をリストで定義
+        ordered_page_keys = ["タイムカード", "シフト管理", "シフト表", "出勤状況", "全体メッセージ", "ダイレクトメッセージ", "ユーザー情報"]
+        if st.session_state.user_position in ["社長", "役職者"]:
+            ordered_page_keys.insert(1, "従業員情報")
+            ordered_page_keys.insert(1, "ユーザー登録")
 
-        # 3. スワイプ操作を処理
+        # --- 2. スワイプナビゲーション機能 ---
+        swipe_js = """
+        <script>
+            let touchstartX = 0, touchendX = 0, touchstartY = 0, touchendY = 0;
+            const gestureZone = document.body;
+            gestureZone.addEventListener('touchstart', e => {
+                touchstartX = e.changedTouches[0].screenX;
+                touchstartY = e.changedTouches[0].screenY;
+            }, {passive: true});
+            gestureZone.addEventListener('touchend', e => {
+                touchendX = e.changedTouches[0].screenX;
+                touchendY = e.changedTouches[0].screenY;
+                handleGesture();
+            }, {passive: true});
+            function handleGesture() {
+                const deltaX = touchendX - touchstartX;
+                const deltaY = touchendY - touchstartY;
+                if (Math.abs(deltaX) > Math.abs(deltaY) + 30 && Math.abs(deltaX) > 50) {
+                    window.location.search = `?swipe=${(touchendX < touchstartX ? 'left' : 'right')}&v=${Date.now()}`;
+                }
+            }
+        </script>
+        """
+        st.markdown(swipe_js, unsafe_allow_html=True)
+
         query_params = st.query_params
         if "swipe" in query_params:
             direction = query_params.get("swipe")
             try:
-                current_page_name = st.session_state.page.split(" 🔴")[0]
-                base_page_options = [opt.split(" 🔴")[0] for opt in page_options]
-                current_index = base_page_options.index(current_page_name)
+                current_index = ordered_page_keys.index(st.session_state.page)
             except (ValueError, AttributeError):
                 current_index = 0
-
+            
             if direction == "left":
-                new_index = (current_index + 1) % len(page_options)
-            else: # direction == "right"
-                new_index = (current_index - 1 + len(page_options)) % len(page_options)
+                new_index = (current_index + 1) % len(ordered_page_keys)
+            else:
+                new_index = (current_index - 1 + len(ordered_page_keys)) % len(ordered_page_keys)
             
-            st.session_state.page = page_options[new_index]
-            
-            # URLからクエリパラメータを削除して再実行
+            st.session_state.page = ordered_page_keys[new_index]
             st.experimental_set_query_params()
-
-        # --- スワイプ機能ここまで ---
-
-        # サイドバーの表示（デスクトップ用）
-        st.sidebar.title("メニュー")
-        st.sidebar.markdown(f"**名前:** {st.session_state.user_name}")
-        st.sidebar.markdown(f"**従業員ID:** {get_user_employee_id(st.session_state.user_id)}")
-        
-        try:
-            current_page_name = st.session_state.page.split(" 🔴")[0]
-            base_page_options = [opt.split(" 🔴")[0] for opt in page_options]
-            current_page_index = base_page_options.index(current_page_name)
-        except (ValueError, AttributeError):
-            current_page_index = 0
-        
-        page = st.sidebar.radio("ページを選択", page_options, index=current_page_index, key="sidebar_nav")
-
-        if st.session_state.page != page:
-            st.session_state.page = page
-            if not page.startswith("ダイレクトメッセージ"):
-                st.session_state.dm_selected_user_id = None
             st.rerun()
 
-        if st.sidebar.button("ログアウト"):
-            for key in st.session_state.keys():
-                del st.session_state[key]
-            st.rerun()
+        # --- 3. トップナビゲーションバーの表示 ---
+        current_page_key = st.session_state.get('page', "タイムカード")
+        cols = st.columns(len(ordered_page_keys))
+        for i, page_key in enumerate(ordered_page_keys):
+            with cols[i]:
+                page_info = page_definitions.get(page_key) or admin_pages.get(page_key)
+                label = page_info['label']
+                if page_info.get('unread', 0) > 0:
+                    label += " 🔴"
+                
+                button_type = "primary" if page_key == current_page_key else "secondary"
+                if st.button(label, key=f"nav_{page_key}", use_container_width=True, type=button_type):
+                    st.session_state.page = page_key
+                    if page_key != "ダイレクトメッセージ":
+                        st.session_state.dm_selected_user_id = None
+                    st.rerun()
 
-        # ページ上部のDM通知
+        st.divider()
+
+        # --- 4. サイドバーの表示（ログアウトボタンのみ） ---
+        with st.sidebar:
+            st.title(" ") # スペースで高さを調整
+            st.info(f"**名前:** {st.session_state.user_name}\n\n**従業員ID:** {get_user_employee_id(st.session_state.user_id)}")
+            if st.button("ログアウト", use_container_width=True):
+                for key in st.session_state.keys():
+                    del st.session_state[key]
+                st.rerun()
+
+        # --- 5. ページ上部のDM通知 ---
         conn = get_db_connection()
         unread_dm_senders = conn.execute("SELECT DISTINCT u.id, u.name FROM messages m JOIN users u ON m.sender_id = u.id WHERE m.user_id = ? AND m.is_read = 0 AND m.message_type = 'DIRECT'", (current_user_id,)).fetchall()
         conn.close()
@@ -1371,31 +1358,24 @@ def main():
                 st.info("🔔 新着メッセージがあります！")
                 for sender in unread_dm_senders:
                     if st.button(f"📩 **{sender['name']}さん**から新しいメッセージが届いています。", key=f"dm_notification_{sender['id']}", use_container_width=True):
-                        st.session_state.page = dm_label
+                        st.session_state.page = "ダイレクトメッセージ"
                         st.session_state.dm_selected_user_id = sender['id']
                         st.rerun()
             st.divider()
 
-        # 選択されたページの表示
-        page_to_show = st.session_state.get('page', "タイムカード")
-        if page_to_show.startswith("タイムカード"):
+        # --- 6. 選択されたページの表示 ---
+        page_functions = {
+            "タイムカード": show_timecard_page, "従業員情報": show_employee_information_page,
+            "ユーザー登録": show_user_registration_page, "シフト管理": show_shift_management_page,
+            "シフト表": show_shift_table_page, "出勤状況": show_work_status_page,
+            "全体メッセージ": show_messages_page, "ダイレクトメッセージ": show_direct_message_page,
+            "ユーザー情報": show_user_info_page,
+        }
+        render_function = page_functions.get(current_page_key)
+        if render_function:
+            render_function()
+        else:
             show_timecard_page()
-        elif page_to_show.startswith("従業員情報"):
-            show_employee_information_page()
-        elif page_to_show.startswith("ユーザー登録"):
-            show_user_registration_page()
-        elif page_to_show.startswith("シフト管理"):
-            show_shift_management_page()
-        elif page_to_show.startswith("シフト表"):
-            show_shift_table_page()
-        elif page_to_show.startswith("出勤状況"):
-            show_work_status_page()
-        elif page_to_show.startswith("全体メッセージ"):
-            show_messages_page()
-        elif page_to_show.startswith("ダイレクトメッセージ"):
-            show_direct_message_page()
-        elif page_to_show.startswith("ユーザー情報"):
-            show_user_info_page()
 
 if __name__ == "__main__":
     main()
