@@ -347,6 +347,7 @@ def show_login_register_page():
                         st.error("その従業員IDは既に使用されています。")
 
 def show_timecard_page():
+    st.session_state.page = "タイムカード"
     st_autorefresh(interval=1000, key="clock_refresh")
     st.title(f"ようこそ、{st.session_state.user_name}さん")
     st.header(get_jst_now().strftime("%Y-%m-%d %H:%M:%S"))
@@ -510,6 +511,7 @@ def render_shift_edit_form(target_date):
                 st.warning("削除するシフトが登録されていません。")
 
 def show_shift_management_page():
+    st.session_state.page = "シフト管理"
     st.header("シフト管理")
 
     # 編集中の日付がある場合はフォームを、ない場合はカレンダーを表示
@@ -586,6 +588,7 @@ def show_shift_management_page():
                     st.rerun()
 
 def show_shift_table_page():
+    st.session_state.page = "月間シフト表"
     st.header("月間シフト表")
     col1, col2, col3 = st.columns([1, 6, 1])
     with col1:
@@ -695,7 +698,8 @@ def show_shift_table_page():
     styled_df = df.style.apply(highlight_user, name_to_highlight=current_user_display_name, subset=['従業員名'])
     st.dataframe(styled_df, use_container_width=True, hide_index=True)
 
-def show_direct_message_page():  
+def show_direct_message_page():
+    st.session_state.page = "ダイレクトメッセージ"
     selected_user_id = st.session_state.get('dm_selected_user_id')
 
     if selected_user_id:
@@ -757,6 +761,7 @@ def show_direct_message_page():
                     st.rerun()
             
 def show_messages_page():
+    st.session_state.page = "全体メッセージ"
     st.header("全体メッセージ")
     col1, col2 = st.columns([2, 1])
     with col1:
@@ -829,6 +834,7 @@ def show_messages_page():
     conn.close()
 
 def show_user_info_page():
+    st.session_state.page = "ユーザー情報"
     st.header("ユーザー情報")
     conn = get_db_connection()
     user_data = conn.execute('SELECT name, employee_id, created_at, password_hash, company, position FROM users WHERE id = ?', (st.session_state.user_id,)).fetchone()
@@ -886,6 +892,7 @@ def confirm_delete_user_dialog(user_id, user_name):
             st.rerun()
 
 def show_employee_information_page():
+    st.session_state.page = "従業員情報"
     st.header("従業員情報")
     st.info("あなたの会社の全従業員の情報を表示しています。")
 
@@ -973,6 +980,7 @@ def show_user_registration_page():
                     st.error("その従業員IDは既に使用されています。")
 
 def show_work_status_page():
+    st.session_state.page = "出勤状況"
     st.header("出勤状況")
     col1, col2, col3 = st.columns([1, 6, 1])
     with col1:
@@ -1236,6 +1244,8 @@ def main():
     if not st.session_state.get('logged_in'):
         show_login_register_page()
     else:
+        if st.session_state.get('page') != "ダイレクトメッセージ":
+            st.session_state.dm_selected_user_id = None
         conn = get_db_connection()
         current_user_id = st.session_state.user_id
         broadcast_unread_count = conn.execute("SELECT COUNT(*) FROM messages WHERE user_id = ? AND is_read = 0 AND message_type IN ('BROADCAST', 'SYSTEM')", (current_user_id,)).fetchone()[0]
