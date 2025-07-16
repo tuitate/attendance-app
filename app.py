@@ -280,68 +280,86 @@ def broadcast_message_dialog():
             else:
                 st.warning("メッセージ内容を入力するか、ファイルを添付してください。")
 
-@st.dialog("シフト登録・編集")
-def shift_edit_dialog(target_date):
-    st.write(f"**{target_date.strftime('%Y年%m月%d日')}** のシフト")
-
-    conn = get_db_connection()
-    existing_shift = conn.execute(
-        "SELECT id, start_datetime, end_datetime FROM shifts WHERE user_id = ? AND date(start_datetime) = ?",
-        (st.session_state.user_id, target_date.isoformat())
-    ).fetchone()
-    conn.close()
-
-    if existing_shift:
-        default_start = datetime.fromisoformat(existing_shift['start_datetime'])
-        default_end = datetime.fromisoformat(existing_shift['end_datetime'])
-    else:
-        is_overnight = st.session_state.last_shift_start_time > st.session_state.last_shift_end_time
-        default_end_date = target_date + timedelta(days=1) if is_overnight else target_date
-        default_start = datetime.combine(target_date, st.session_state.last_shift_start_time)
-        default_end = datetime.combine(default_end_date, st.session_state.last_shift_end_time)
-
-    col1, col2 = st.columns(2)
-    with col1:
-        start_date_input = st.date_input("出勤日", value=default_start.date())
-        end_date_input = st.date_input("退勤日", value=default_end.date())
-    with col2:
-        start_time_input = st.time_input("出勤時刻", value=default_start.time())
-        end_time_input = st.time_input("退勤時刻", value=default_end.time())
-
-    start_datetime = datetime.combine(start_date_input, start_time_input)
-    end_datetime = datetime.combine(end_date_input, end_time_input)
-
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("登録・更新", use_container_width=True, type="primary"):
-            if start_datetime >= end_datetime:
-                st.error("出勤日時は退勤日時より前に設定してください。")
-            else:
-                conn = get_db_connection()
-                if existing_shift:
-                    conn.execute('UPDATE shifts SET start_datetime = ?, end_datetime = ? WHERE id = ?',
-                                 (start_datetime.isoformat(), end_datetime.isoformat(), existing_shift['id']))
-                else:
-                    conn.execute('INSERT INTO shifts (user_id, start_datetime, end_datetime) VALUES (?, ?, ?)',
-                                 (st.session_state.user_id, start_datetime.isoformat(), end_datetime.isoformat()))
-                conn.commit()
-                conn.close()
-                st.session_state.last_shift_start_time = start_datetime.time()
-                st.session_state.last_shift_end_time = end_datetime.time()
-                st.toast("シフトを保存しました！", icon="✅")
-                st.session_state.last_processed_click_id = None
+# @st.dialogデコレータを削除し、通常の関数に変更
+def shift_edit_form(target_date):
+    # モーダルウィンドウのように見せるため、コンテナで囲む
+    with st.container(border=True):
+        col1, col2 = st.columns([4, 1])
+        with col1:
+            st.subheader(f"🗓️ {target_date.strftime('%Y年%m月%d日')} のシフト登録・編集")
+        with col2:
+            # 閉じるボタンを明示的に設置
+            if st.button("✖️ 閉じる", key=f"close_{target_date}"):
+                st.session_state.show_shift_modal = False
                 st.rerun()
 
-    with col2:
-        if st.button("削除", use_container_width=True):
-            if existing_shift:
-                conn = get_db_connection()
-                conn.execute('DELETE FROM shifts WHERE id = ?', (existing_shift['id'],))
-                conn.commit()
-                conn.close()
-                st.toast("シフトを削除しました。", icon="🗑️")
-                st.session_state.last_processed_click_id = None
-                st.rerun()
+        conn = get_db_connection()
+        existing_shift = conn.execute(
+            "SELECT id, start_datetime, end_datetime FROM shifts WHERE user_id = ? AND date(start_datetime) = ?",
+            (st.session_state.user_id, target_date.isoformat())
+        ).fetchone()
+        conn.close()
+
+        if existing_shift:
+            default_start = datetime.fromisoformat(existing_shift['start_datetime'])
+            default_end = datetime.fromisoformat(existing_shift['end_datetime'])
+        else:
+            is_overnight = st.session_state.last_shift_start_time > st.session_state.last_shift_end_time
+            default_end_date = target_date + timedelta(days=1) if is_overnight else target_date
+            default_start = datetime.combine(target_date, st.session_state.last_shift_start_time)
+            default_end = datetime.combine(default_end_date, st.session_state.last_shift_end_time)
+
+        # フォームを使って入力欄をグループ化
+        with st.form(key=f"shift_form_{target_date}", clear_on_submit=True):
+            c1, c2 = st.columns(2)
+            with c1:
+                start_date_input = st.date_input("出勤日", value=default_start.date())
+                end_date_input = st.date_input("退勤日", value=default_end.date())
+            with c2:
+                start_time_input = st.time_input("出勤時刻", value=default_start.time())
+                end_time_input = st.time_input("退勤時刻", value=default_end.time())
+
+            start_datetime = datetime.combine(start_date_input, start_time_input)
+            end_datetime = datetime.combine(end_date_input, end_time_input)
+
+            # 登録・削除ボタン
+            c1, c2, _ = st.columns([1, 1, 3])
+            with c1:
+                # 登録ボタン
+                if st.form_submit_button("登録・更新", use_container_width=True, type="primary"):
+                    if start_datetime >= end_datetime:
+                        st.error("出勤日時は退勤日時より前に設定してください。")
+                    else:
+                        conn = get_db_connection()
+                        if existing_shift:
+                            conn.execute('UPDATE shifts SET start_datetime = ?, end_datetime = ? WHERE id = ?',
+                                         (start_datetime.isoformat(), end_datetime.isoformat(), existing_shift['id']))
+                        else:
+                            conn.execute('INSERT INTO shifts (user_id, start_datetime, end_datetime) VALUES (?, ?, ?)',
+                                         (st.session_state.user_id, start_datetime.isoformat(), end_datetime.isoformat()))
+                        conn.commit()
+                        conn.close()
+                        st.session_state.last_shift_start_time = start_datetime.time()
+                        st.session_state.last_shift_end_time = end_datetime.time()
+                        st.toast("シフトを保存しました！", icon="✅")
+                        # フォームを閉じる
+                        st.session_state.show_shift_modal = False
+                        st.rerun()
+
+            with c2:
+                 # 削除ボタン
+                if st.form_submit_button("削除", use_container_width=True):
+                    if existing_shift:
+                        conn = get_db_connection()
+                        conn.execute('DELETE FROM shifts WHERE id = ?', (existing_shift['id'],))
+                        conn.commit()
+                        conn.close()
+                        st.toast("シフトを削除しました。", icon="🗑️")
+                        # フォームを閉じる
+                        st.session_state.show_shift_modal = False
+                        st.rerun()
+                    else:
+                        st.warning("削除するシフトがありません。")
 
 def show_login_register_page():
     st.header("ログインまたは新規登録")
@@ -488,76 +506,61 @@ def show_shift_management_page():
     st.header("シフト管理")
     st.info("カレンダーの日付または登録済みのシフトをクリックして編集できます。")
 
-    # --- 変更点①：状態管理変数を追加 ---
-    # ダイアログ表示の命令
-    if "dialog_target_date" not in st.session_state:
-        st.session_state.dialog_target_date = None
-    # 処理済みのクリック情報を記録する「ロック」
-    if "last_processed_click_id" not in st.session_state:
-        st.session_state.last_processed_click_id = None
+    # --- 変更点①：状態管理変数をシンプルにする ---
+    if 'show_shift_modal' not in st.session_state:
+        st.session_state.show_shift_modal = False
+    if 'modal_target_date' not in st.session_state:
+        st.session_state.modal_target_date = None
 
-    # --- ダイアログ表示処理 ---
-    # スクリプトの実行時にダイアログ表示の命令があれば、ダイアログを開く
-    if st.session_state.dialog_target_date:
-        target_date = st.session_state.dialog_target_date
-        # ★重要：命令をすぐにクリアし、不要な再表示を防ぐ
-        st.session_state.dialog_target_date = None
-        shift_edit_dialog(target_date)
+    # --- 変更点②：モーダル表示を、ページの上部または下部で一括管理 ---
+    # `show_shift_modal`がTrueなら、フォーム描画関数を呼び出す
+    if st.session_state.show_shift_modal and st.session_state.modal_target_date:
+        shift_edit_form(st.session_state.modal_target_date)
+        # フォームが表示されている間は、カレンダーを非表示にして誤操作を防ぐ
+        st.divider()
+    else:
+        # --- フォームが表示されていない時だけ、カレンダーを描画 ---
+        conn = get_db_connection()
+        shifts = conn.execute('SELECT id, start_datetime, end_datetime FROM shifts WHERE user_id = ?', (st.session_state.user_id,)).fetchall()
+        conn.close()
 
-    # --- ページ本体の描画 ---
-    conn = get_db_connection()
-    shifts = conn.execute('SELECT id, start_datetime, end_datetime FROM shifts WHERE user_id = ?', (st.session_state.user_id,)).fetchall()
-    conn.close()
+        events = []
+        for shift in shifts:
+            start_dt = datetime.fromisoformat(shift['start_datetime'])
+            end_dt = datetime.fromisoformat(shift['end_datetime'])
+            title = f"{start_dt.strftime('%H:%M')}~{end_dt.strftime('%H:%M')}"
+            if start_dt.time() >= time(22, 0) or end_dt.time() <= time(5, 0):
+                title += " (夜)"
+            events.append({
+                "title": title, "start": start_dt.isoformat(), "end": end_dt.isoformat(),
+                "color": "#FF6347" if (start_dt.time() >= time(22, 0) or end_dt.time() <= time(5, 0)) else "#1E90FF",
+                "id": shift['id'], "allDay": False
+            })
 
-    events = []
-    for shift in shifts:
-        start_dt = datetime.fromisoformat(shift['start_datetime'])
-        end_dt = datetime.fromisoformat(shift['end_datetime'])
-        title = f"{start_dt.strftime('%H:%M')}~{end_dt.strftime('%H:%M')}"
-        if start_dt.time() >= time(22, 0) or end_dt.time() <= time(5, 0):
-            title += " (夜)"
-        events.append({
-            "title": title, "start": start_dt.isoformat(), "end": end_dt.isoformat(),
-            "color": "#FF6347" if (start_dt.time() >= time(22, 0) or end_dt.time() <= time(5, 0)) else "#1E90FF",
-            "id": shift['id'], "allDay": False
-        })
+        col1, col2, col3 = st.columns([1, 6, 1])
+        with col1:
+            if st.button("先月"):
+                st.session_state.calendar_date -= relativedelta(months=1)
+                st.rerun()
+        with col2:
+            st.subheader(st.session_state.calendar_date.strftime('%Y年 %m月'), anchor=False, divider='blue')
+        with col3:
+            if st.button("来月"):
+                st.session_state.calendar_date += relativedelta(months=1)
+                st.rerun()
 
-    col1, col2, col3 = st.columns([1, 6, 1])
-    with col1:
-        if st.button("先月"):
-            st.session_state.calendar_date -= relativedelta(months=1)
-            st.rerun()
-    with col2:
-        st.subheader(st.session_state.calendar_date.strftime('%Y年 %m月'), anchor=False, divider='blue')
-    with col3:
-        if st.button("来月"):
-            st.session_state.calendar_date += relativedelta(months=1)
-            st.rerun()
+        calendar_result = calendar(
+            events=events,
+            options={
+                "headerToolbar": False, "initialDate": st.session_state.calendar_date.isoformat(),
+                "initialView": "dayGridMonth", "locale": "ja", "selectable": True, "height": "auto"
+            },
+            custom_css=".fc-event-title { font-weight: 700; }\n.fc-toolbar-title { font-size: 1.5rem; }",
+            key="shift_calendar_main"
+        )
 
-    calendar_result = calendar(
-        events=events,
-        options={
-            "headerToolbar": False, "initialDate": st.session_state.calendar_date.isoformat(),
-            "initialView": "dayGridMonth", "locale": "ja", "selectable": True, "height": "auto"
-        },
-        custom_css=".fc-event-title { font-weight: 700; }\n.fc-toolbar-title { font-size: 1.5rem; }",
-        key="shift_calendar"
-    )
-
-    # --- 変更点②：クリック判定のロジックを修正 ---
-    if isinstance(calendar_result, dict):
-        # クリックごとにユニークなIDを生成する
-        click_id = None
-        if 'dateClick' in calendar_result:
-            click_id = calendar_result['dateClick']['date']
-        elif 'eventClick' in calendar_result:
-            click_id = f"{calendar_result['eventClick']['event']['id']}_{calendar_result['eventClick']['event']['start']}"
-
-        # ★最重要：新しいクリックであり、かつロックされていなければ処理する
-        if click_id and click_id != st.session_state.last_processed_click_id:
-            # このクリック情報を「処理済み」としてロックする
-            st.session_state.last_processed_click_id = click_id
-
+        # --- 変更点③：クリックされたら、フォーム表示の「命令」を出すだけにする ---
+        if isinstance(calendar_result, dict):
             clicked_date = None
             if 'dateClick' in calendar_result:
                 utc_dt = datetime.fromisoformat(calendar_result['dateClick']['date'].replace('Z', '+00:00'))
@@ -570,8 +573,10 @@ def show_shift_management_page():
                 if clicked_date < date.today():
                     st.warning("過去の日付のシフトは変更できません。")
                 else:
-                    # ダイアログ表示の命令をセットして、再実行
-                    st.session_state.dialog_target_date = clicked_date
+                    # フォーム表示のフラグを立て、日付を保存する
+                    st.session_state.show_shift_modal = True
+                    st.session_state.modal_target_date = clicked_date
+                    # ここでrerunを呼ぶことで、ページの先頭のロジックが実行されフォームが表示される
                     st.rerun()
         
 def show_shift_table_page():
