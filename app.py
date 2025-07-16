@@ -595,7 +595,7 @@ def show_shift_table_page():
             st.rerun()
 
     selected_date = st.session_state.calendar_date
-    desired_width_pixels = 150
+    desired_width_pixels = 300
     css = f"""
     <style>
         .stDataFrame th[data-testid="stDataFrameColumnHeader"], .stDataFrame td {{
