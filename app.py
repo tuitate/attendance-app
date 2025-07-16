@@ -677,7 +677,7 @@ def show_shift_table_page():
             pass
         return styles
 
-    #styled_df = df.style.apply(highlight_user, name_to_highlight=current_user_display_name, subset=['従業員名'])
+    styled_df = None
 
     # --- ★変更点③：column_config を使って列の幅を定義 ---
     column_config = {
