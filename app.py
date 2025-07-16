@@ -329,6 +329,7 @@ def shift_edit_dialog(target_date):
                 st.session_state.last_shift_start_time = start_datetime.time()
                 st.session_state.last_shift_end_time = end_datetime.time()
                 st.toast("シフトを保存しました！", icon="✅")
+                st.session_state.last_processed_click_id = None
                 st.rerun()
 
     with col2:
@@ -339,6 +340,7 @@ def shift_edit_dialog(target_date):
                 conn.commit()
                 conn.close()
                 st.toast("シフトを削除しました。", icon="🗑️")
+                st.session_state.last_processed_click_id = None
                 st.rerun()
 
 def show_login_register_page():
@@ -486,22 +488,23 @@ def show_shift_management_page():
     st.header("シフト管理")
     st.info("カレンダーの日付または登録済みのシフトをクリックして編集できます。")
 
-    # セッションstateを初期化
+    # --- 変更点①：状態管理変数を追加 ---
+    # ダイアログ表示の命令
     if "dialog_target_date" not in st.session_state:
         st.session_state.dialog_target_date = None
+    # 処理済みのクリック情報を記録する「ロック」
+    if "last_processed_click_id" not in st.session_state:
+        st.session_state.last_processed_click_id = None
 
-    # --- 変更点①：ダイアログ表示処理を関数の先頭に移動 ---
-    # 前の実行（クリック時）に日付がセットされていたら、このブロックが実行される
+    # --- ダイアログ表示処理 ---
+    # スクリプトの実行時にダイアログ表示の命令があれば、ダイアログを開く
     if st.session_state.dialog_target_date:
-        # 表示する日付を一時変数に退避
         target_date = st.session_state.dialog_target_date
-        # ★最重要：すぐに状態をクリアし、無限ループを完全に防ぐ
+        # ★重要：命令をすぐにクリアし、不要な再表示を防ぐ
         st.session_state.dialog_target_date = None
-        # ダイアログを呼び出す
         shift_edit_dialog(target_date)
 
-    # --- 以下、ページの通常描画処理 ---
-
+    # --- ページ本体の描画 ---
     conn = get_db_connection()
     shifts = conn.execute('SELECT id, start_datetime, end_datetime FROM shifts WHERE user_id = ?', (st.session_state.user_id,)).fetchall()
     conn.close()
@@ -538,27 +541,38 @@ def show_shift_management_page():
             "initialView": "dayGridMonth", "locale": "ja", "selectable": True, "height": "auto"
         },
         custom_css=".fc-event-title { font-weight: 700; }\n.fc-toolbar-title { font-size: 1.5rem; }",
-        key="shift_calendar" # キーは固定して安定させる
+        key="shift_calendar"
     )
 
-    # --- 変更点②：クリック検知と、再実行の指示 ---
+    # --- 変更点②：クリック判定のロジックを修正 ---
     if isinstance(calendar_result, dict):
-        clicked_date = None
+        # クリックごとにユニークなIDを生成する
+        click_id = None
         if 'dateClick' in calendar_result:
-            utc_dt = datetime.fromisoformat(calendar_result['dateClick']['date'].replace('Z', '+00:00'))
-            clicked_date = utc_dt.astimezone(JST).date()
+            click_id = calendar_result['dateClick']['date']
         elif 'eventClick' in calendar_result:
-            start_str = calendar_result['eventClick']['event']['start'].split('T')[0]
-            clicked_date = date.fromisoformat(start_str)
+            click_id = f"{calendar_result['eventClick']['event']['id']}_{calendar_result['eventClick']['event']['start']}"
 
-        if clicked_date:
-            if clicked_date < date.today():
-                st.warning("過去の日付のシフトは変更できません。")
-            else:
-                # 次の実行でダイアログを開くよう、日付をセットする
-                st.session_state.dialog_target_date = clicked_date
-                # ★最重要：状態をセットしたら、すぐにスクリプトを再実行する
-                st.rerun()
+        # ★最重要：新しいクリックであり、かつロックされていなければ処理する
+        if click_id and click_id != st.session_state.last_processed_click_id:
+            # このクリック情報を「処理済み」としてロックする
+            st.session_state.last_processed_click_id = click_id
+
+            clicked_date = None
+            if 'dateClick' in calendar_result:
+                utc_dt = datetime.fromisoformat(calendar_result['dateClick']['date'].replace('Z', '+00:00'))
+                clicked_date = utc_dt.astimezone(JST).date()
+            elif 'eventClick' in calendar_result:
+                start_str = calendar_result['eventClick']['event']['start'].split('T')[0]
+                clicked_date = date.fromisoformat(start_str)
+
+            if clicked_date:
+                if clicked_date < date.today():
+                    st.warning("過去の日付のシフトは変更できません。")
+                else:
+                    # ダイアログ表示の命令をセットして、再実行
+                    st.session_state.dialog_target_date = clicked_date
+                    st.rerun()
         
 def show_shift_table_page():
     st.header("月間シフト表")
