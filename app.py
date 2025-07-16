@@ -690,15 +690,6 @@ def show_shift_table_page():
     styled_df = df.style.apply(highlight_user, name_to_highlight=current_user_display_name, subset=['従業員名'])
     st.dataframe(styled_df, use_container_width=True, hide_index=True)
 
-    def highlight_user(column, name_to_highlight):
-        styles = [''] * len(column)
-        try:
-            idx_pos = column[column == name_to_highlight].index[0]
-            styles[idx_pos] = 'background-color: rgba(230, 243, 255, 0.6)'
-        except IndexError:
-            pass
-        return styles
-
 def show_direct_message_page():  
     selected_user_id = st.session_state.get('dm_selected_user_id')
     styled_df = df.style.apply(highlight_user, name_to_highlight=current_user_display_name, subset=['従業員名'])
