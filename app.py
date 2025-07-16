@@ -703,6 +703,7 @@ def show_shift_table_page():
 
 def show_direct_message_page():  
     selected_user_id = st.session_state.get('dm_selected_user_id')
+    styled_df = df.style.apply(highlight_user, name_to_highlight=current_user_display_name, subset=['従業員名'])
 
     if selected_user_id:
         conn = get_db_connection()
