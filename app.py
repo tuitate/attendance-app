@@ -348,7 +348,11 @@ def show_login_register_page():
                         st.error("その従業員IDは既に使用されています。")
 
 def show_timecard_page():
-    st_autorefresh(interval=1000, key="clock_refresh")
+    # --- ★★★ 修正点: ダイアログ表示中は自動更新を停止する ★★★ ---
+    # メッセージ送信ダイアログが表示されていない場合のみ、自動更新を実行する
+    if not st.session_state.get('show_broadcast_dialog', False):
+        st_autorefresh(interval=1000, key="clock_refresh")
+
     st.title(f"ようこそ、{st.session_state.user_name}さん")
     st.header(get_jst_now().strftime("%Y-%m-%d %H:%M:%S"))
 
@@ -365,7 +369,7 @@ def show_timecard_page():
         if st.session_state.get('clock_in_error'):
             st.warning(st.session_state.clock_in_error)
 
-        if st.session_state.confirmation_action:
+        if st.session_state.get('confirmation_action'):
             action_details = action_map.get(st.session_state.confirmation_action)
             if action_details:
                 st.warning(action_details['message'])
@@ -374,6 +378,7 @@ def show_timecard_page():
                     if st.button("はい", use_container_width=True, type="primary"):
                         action_details['func']()
                         st.session_state.confirmation_action = None
+                        st.session_state.clock_in_error = None
                         st.rerun()
                 with col2:
                     if st.button("いいえ", use_container_width=True):
@@ -391,7 +396,7 @@ def show_timecard_page():
                     if shift is None:
                         error_msg = "本日のシフトが登録されていません。先にシフトを登録してください。"
                     else:
-                        naive_start_dt = datetime.fromisoformat(shift['start_datetime'])
+                        naive_start_dt = datetime.fromisoformat(shift[0]) # インデックスでアクセス
                         start_dt = naive_start_dt.replace(tzinfo=JST)
                         earliest_clock_in = start_dt - timedelta(minutes=5)
                         now = get_jst_now()
