@@ -873,8 +873,12 @@ def show_user_info_page():
                         else:
                             st.error("パスワードの変更中にエラーが発生しました。")
 
+        st.divider()
+        if st.button("ログアウト", use_container_width=True, type="secondary"):
+            for key in st.session_state.keys():
+                del st.session_state[key]
+            st.rerun()
 
-@st.dialog("従業員削除の確認")
 def confirm_delete_user_dialog(user_id, user_name):
     st.warning(f"本当に従業員「{user_name}」さんを削除しますか？\n\nこの操作は元に戻せません。関連するすべての勤怠記録やシフト情報も削除されます。")
     
@@ -1405,3 +1409,5 @@ def main():
         """
         st.markdown(nav_bar_component, unsafe_allow_html=True)
 
+if __name__ == "__main__":
+    main()
