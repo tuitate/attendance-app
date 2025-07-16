@@ -582,6 +582,17 @@ def show_shift_management_page():
         
 def show_shift_table_page():
     st.header("月間シフト表")
+
+    # --- ★変更点①：列の幅を調整するための数値入力欄を追加 ---
+    # ここで入力したピクセル数が、下の表の列幅に反映されます。
+    desired_width = st.number_input(
+        "日付列の幅をピクセルで調整",
+        min_value=50,   # 最小幅
+        max_value=300,  # 最大幅
+        value=90,       # 初期値
+        step=10         # 変更する際のステップ幅
+    )
+
     col1, col2, col3 = st.columns([1, 6, 1])
     with col1:
         if st.button("先月", key="table_prev"):
@@ -663,27 +674,23 @@ def show_shift_table_page():
     def highlight_user(column, name_to_highlight):
         styles = [''] * len(column)
         try:
-            # Seriesをリストに変換してからインデックスを探す
             idx_pos = column.tolist().index(name_to_highlight)
             styles = ['background-color: rgba(230, 243, 255, 0.6)' if i == idx_pos else '' for i in range(len(column))]
         except ValueError:
-            # ユーザーが見つからない場合は何もしない
             pass
         return styles
 
     styled_df = df.style.apply(highlight_user, name_to_highlight=current_user_display_name, subset=['従業員名'])
 
-    # --- ★変更点：column_config で列の幅を定義 ---
     column_config = {
         "従業員名": st.column_config.TextColumn("従業員名", width="medium")
     }
-    # 日付列のコンフィグを動的に生成
     for col in df.columns:
         if col != "従業員名":
-            # "medium" を指定して、列幅を少し広げる
-            column_config[col] = st.column_config.TextColumn(col, width="medium")
+            # --- ★変更点②：数値入力欄の値を使って、列幅をピクセルで指定 ---
+            column_config[col] = st.column_config.TextColumn(col, width=desired_width)
 
-    # --- 最終的なデータフレームの表示（重複がないことを確認）---
+    # --- ★変更点③：st.dataframeの呼び出しを一つに絞り、重複を解消 ---
     st.dataframe(
         styled_df,
         use_container_width=True,
