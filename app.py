@@ -663,26 +663,27 @@ def show_shift_table_page():
     def highlight_user(column, name_to_highlight):
         styles = [''] * len(column)
         try:
-            idx_pos = column[column == name_to_highlight].index[0]
-            styles[idx_pos] = 'background-color: rgba(230, 243, 255, 0.6)'
-        except IndexError:
+            # Seriesをリストに変換してからインデックスを探す
+            idx_pos = column.tolist().index(name_to_highlight)
+            styles = ['background-color: rgba(230, 243, 255, 0.6)' if i == idx_pos else '' for i in range(len(column))]
+        except ValueError:
+            # ユーザーが見つからない場合は何もしない
             pass
         return styles
 
     styled_df = df.style.apply(highlight_user, name_to_highlight=current_user_display_name, subset=['従業員名'])
 
-    # --- ★変更点：column_config を使って列の幅を定義 ---
+    # --- ★変更点：column_config で列の幅を定義 ---
     column_config = {
         "従業員名": st.column_config.TextColumn("従業員名", width="medium")
     }
     # 日付列のコンフィグを動的に生成
     for col in df.columns:
         if col != "従業員名":
-            # "small" を指定して、内容が表示される最低限の幅を確保しつつ、
-            # スマホでも見やすいように設定
-            column_config[col] = st.column_config.TextColumn(col, width="small")
+            # "medium" を指定して、列幅を少し広げる
+            column_config[col] = st.column_config.TextColumn(col, width="medium")
 
-    # --- ★変更点：st.dataframe に column_config を渡す ---
+    # --- 最終的なデータフレームの表示（重複がないことを確認）---
     st.dataframe(
         styled_df,
         use_container_width=True,
