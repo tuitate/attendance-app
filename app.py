@@ -763,30 +763,29 @@ def show_messages_page():
     with col1:
         st.header("全体メッセージ")
     with col2:
-        # ★★★ 修正点: ボタンが押されたらセッションの状態をTrueにする ★★★
         if st.button("📝 全社へメッセージを送信する", use_container_width=True, type="primary"):
             st.session_state.show_broadcast_dialog = True
             st.rerun()
 
-if st.session_state.get('show_broadcast_dialog'):
+    if st.session_state.get('show_broadcast_dialog'):
         st.session_state.show_broadcast_dialog = False
         broadcast_message_dialog()
-    
-st.divider()
+
+    st.divider()
+
     conn = get_db_connection()
-    
     messages = conn.execute("""
         SELECT id, content, created_at, file_base64, file_name, file_type, sender_id FROM messages
         WHERE user_id = ? AND message_type IN ('BROADCAST', 'SYSTEM')
         ORDER BY created_at DESC
     """, (st.session_state.user_id,)).fetchall()
-
+    
     if not messages:
         st.info("新しいメッセージはありません。")
     else:
         for msg in messages:
             with st.container(border=True):
-                is_confirming_this_message = st.session_state.confirming_delete_message_created_at == msg['created_at']
+                is_confirming_this_message = st.session_state.get('confirming_delete_message_created_at') == msg['created_at']
 
                 if is_confirming_this_message:
                     st.warning("このメッセージを全ユーザーから削除します。よろしいですか？")
@@ -806,22 +805,19 @@ st.divider()
                     with msg_col1:
                         created_at_dt = datetime.fromisoformat(msg['created_at'])
                         st.markdown(f"**{created_at_dt.strftime('%Y年%m月%d日 %H:%M')}**")
-
                     with msg_col2:
                         is_broadcast = msg['content'] and msg['content'].startswith("**【お知らせ】")
                         if is_broadcast and msg['sender_id'] == st.session_state.user_id:
                             if st.button("🗑️ 削除", key=f"delete_{msg['id']}", use_container_width=True):
                                 st.session_state.confirming_delete_message_created_at = msg['created_at']
                                 st.rerun()
-
+                    
                     if msg['content']:
                         st.markdown(msg['content'])
-
                     if msg['file_base64']:
                         file_bytes = base64.b64decode(msg['file_base64'])
-                        file_type = msg['file_type']
-                        file_name = msg['file_name']
-
+                        file_type = msg.get('file_type')
+                        file_name = msg.get('file_name', 'downloaded_file')
                         if file_type and file_type.startswith("image/"):
                             st.image(file_bytes)
                         else:
@@ -831,8 +827,8 @@ st.divider()
                                 file_name=file_name,
                                 mime=file_type
                             )
-
-    conn.execute('UPDATE messages SET is_read = 1 WHERE user_id = ?', (st.session_state.user_id,))
+    
+    conn.execute('UPDATE messages SET is_read = 1 WHERE user_id = ? AND message_type IN ("BROADCAST", "SYSTEM")', (st.session_state.user_id,))
     conn.commit()
     conn.close()
 
