@@ -1240,7 +1240,7 @@ def display_work_summary():
                 st.session_state.last_clock_out_reminder_date = today_str
                 
 def main():
-    """メインのアプリケーションロジック（st.tabsによる最新ナビゲーション）"""
+    """メインのアプリケーションロジック（ボトムナビゲーション＆スワイプ機能つき）"""
     st.set_page_config(layout="wide")
 
     init_db()
@@ -1252,72 +1252,154 @@ def main():
         # --- 1. ページ情報の定義 ---
         conn = get_db_connection()
         current_user_id = st.session_state.user_id
+        # 未読数を取得
         broadcast_unread_count = conn.execute("SELECT COUNT(*) FROM messages WHERE user_id = ? AND is_read = 0 AND message_type IN ('BROADCAST', 'SYSTEM')", (current_user_id,)).fetchone()[0]
-        dm_unread_count = conn.execute("SELECT COUNT(*) FROM messages WHERE user_id = ? AND is_read = 0 AND message_type = 'DIRECT'", (current_user_id,)).fetchone()
-        
+        dm_unread_count = conn.execute("SELECT COUNT(*) FROM messages WHERE user_id = ? AND is_read = 0 AND message_type = 'DIRECT'", (current_user_id,)).fetchone()[0]
         unread_dm_senders = conn.execute("SELECT DISTINCT u.id, u.name FROM messages m JOIN users u ON m.sender_id = u.id WHERE m.user_id = ? AND m.is_read = 0 AND m.message_type = 'DIRECT'", (current_user_id,)).fetchall()
         conn.close()
 
-        # --- 2. ページ上部のDM通知（これは残します） ---
-        if unread_dm_senders:
-            with st.container(border=True):
-                st.info("🔔 新着メッセージがあります！")
-                for sender in unread_dm_senders:
-                    # このボタンを押すと、自動的にDMタブが開きます
-                    if st.button(f"📩 **{sender['name']}さん**から新しいメッセージが届いています。", key=f"dm_notification_{sender['id']}", use_container_width=True):
-                        st.session_state.dm_selected_user_id = sender['id']
-                        # st.tabsはセッションステートで直接制御できないため、ここではセッションをセットするだけ
-                        # ユーザーは通知をクリックした後、手動でDMタブを開く必要があります
-                        st.info("下の「DM」タブを開いてください。")
-
-        # --- 3. タブナビゲーションの作成 ---
-        tab_titles = []
-        tab_icons = []
+        # 全てのページをアイコンと共に辞書で管理
+        page_definitions = {
+            "タイムカード": {"icon": "⏰"}, "シフト管理": {"icon": "🗓️"}, "シフト表": {"icon": "📊"},
+            "出勤状況": {"icon": "📈"}, "全体メッセージ": {"icon": "📢", "unread": broadcast_unread_count > 0},
+            "ダイレクトメッセージ": {"icon": "💬", "unread": dm_unread_count > 0}, "ユーザー情報": {"icon": "👤"},
+            "従業員情報": {"icon": "👥"}, "ユーザー登録": {"icon": "📝"}
+        }
         
-        # 表示するページの順序を定義
+        # 表示するページの順序をリストで定義
         ordered_page_keys = ["タイムカード", "シフト管理", "シフト表", "出勤状況", "全体メッセージ", "ダイレクトメッセージ", "ユーザー情報"]
         if st.session_state.user_position in ["社長", "役職者"]:
             ordered_page_keys.insert(1, "従業員情報")
             ordered_page_keys.insert(1, "ユーザー登録")
 
-        page_definitions = {
-            "タイムカード": {"icon": "⏰"}, "シフト管理": {"icon": "🗓️"}, "シフト表": {"icon": "📊"},
-            "出勤状況": {"icon": "📈"}, "全体メッセージ": {"icon": "📢", "unread": broadcast_unread_count},
-            "ダイレクトメッセージ": {"icon": "💬", "unread": dm_unread_count[0] if dm_unread_count else 0}, "ユーザー情報": {"icon": "👤"},
-            "従業員情報": {"icon": "👥"}, "ユーザー登録": {"icon": "📝"}
-        }
+        # --- 2. ナビゲーション操作の処理 (タップ＆スワイプ) ---
+        query_params = st.query_params
+        navigated = False
+        
+        # セッションにページがなければ初期化
+        if 'page' not in st.session_state:
+            st.session_state.page = "タイムカード"
 
-        for page_key in ordered_page_keys:
-            info = page_definitions.get(page_key)
-            if info:
-                label = page_key
-                if info.get('unread', 0) > 0:
-                    label += " 🔴" # 未読があればアイコンを追加
-                tab_titles.append(label)
+        current_index = ordered_page_keys.index(st.session_state.page)
+
+        # URLパラメータによるナビゲーションを処理
+        if "page" in query_params:
+            page_key = query_params.get("page")
+            if page_key in ordered_page_keys:
+                st.session_state.page = page_key
+                navigated = True
+        elif "swipe" in query_params:
+            direction = query_params.get("swipe")
+            if direction == "left":
+                new_index = (current_index + 1) % len(ordered_page_keys)
+            else: # right
+                new_index = (current_index - 1 + len(ordered_page_keys)) % len(ordered_page_keys)
+            st.session_state.page = ordered_page_keys[new_index]
+            navigated = True
         
-        # st.tabsでタブを作成
-        tabs = st.tabs(tab_titles)
-        
-        # 各タブにページの内容を割り当て
-        page_function_map = {
-            "タイムカード": show_timecard_page, "ユーザー登録": show_user_registration_page,
-            "従業員情報": show_employee_information_page, "シフト管理": show_shift_management_page,
+        if navigated:
+            # DMページ以外に移動したら、選択中のDM相手をリセット
+            if not st.session_state.page.startswith("ダイレクトメッセージ"):
+                st.session_state.dm_selected_user_id = None
+            st.experimental_set_query_params()
+            st.rerun()
+
+        # --- 3. ページ上部のDM通知 ---
+        if unread_dm_senders:
+            with st.container(border=True):
+                st.info("🔔 新着メッセージがあります！")
+                for sender in unread_dm_senders:
+                    if st.button(f"📩 **{sender['name']}さん**から新しいメッセージが届いています。", key=f"dm_notification_{sender['id']}", use_container_width=True):
+                        st.session_state.page = "ダイレクトメッセージ"
+                        st.session_state.dm_selected_user_id = sender['id']
+                        st.rerun()
+            st.divider()
+
+        # --- 4. 選択されたページの表示 ---
+        page_to_show = st.session_state.get('page', "タイムカード")
+        page_functions = {
+            "タイムカード": show_timecard_page, "従業員情報": show_employee_information_page,
+            "ユーザー登録": show_user_registration_page, "シフト管理": show_shift_management_page,
             "シフト表": show_shift_table_page, "出勤状況": show_work_status_page,
             "全体メッセージ": show_messages_page, "ダイレクトメッセージ": show_direct_message_page,
-            "ユーザー情報": show_user_info_page
+            "ユーザー情報": show_user_info_page,
         }
+        render_function = page_functions.get(page_to_show)
+        if render_function:
+            render_function()
+        else:
+            show_timecard_page()
 
-        for i, tab in enumerate(tabs):
-            with tab:
-                # タブの名前に対応する関数を呼び出す
-                page_key_to_render = ordered_page_keys[i]
-                render_function = page_function_map.get(page_key_to_render)
-                if render_function:
-                    render_function()
+        # --- 5. ボトムナビゲーションバーとスワイプ機能の描画 ---
+        nav_items_html = ""
+        for page_key in ordered_page_keys:
+            info = page_definitions.get(page_key)
+            is_active = "active" if page_key == page_to_show else ""
+            has_unread = "unread" if info.get('unread') else ""
+            nav_items_html += f"""
+                <a href="?page={page_key}" class="nav-item {is_active}">
+                    <div class="nav-icon">{info['icon']}</div>
+                    <div class="nav-label">{page_key}</div>
+                    {'<div class="unread-dot"></div>' if has_unread else ''}
+                </a>
+            """
 
-        # --- 4. サイドバー（ログアウトボタンのみ） ---
+        bottom_nav_html = f"""
+        <style>
+            .bottom-nav {{
+                position: fixed; bottom: 0; left: 0; width: 100%;
+                background-color: #1a1a1a; border-top: 1px solid #333;
+                display: flex; justify-content: space-around; align-items: stretch;
+                padding: 5px 0; z-index: 999;
+            }}
+            .nav-item {{
+                display: flex; flex-direction: column; align-items: center;
+                justify-content: center; text-decoration: none; color: #888;
+                flex-grow: 1; padding: 5px 0; position: relative;
+            }}
+            .nav-item.active {{ color: #00aaff; }}
+            .nav-icon {{ font-size: 24px; }}
+            .nav-label {{ font-size: 10px; margin-top: 2px; }}
+            .unread-dot {{
+                position: absolute; top: 5px; right: 15px;
+                width: 8px; height: 8px; background-color: #ff4b4b;
+                border-radius: 50%;
+            }}
+            /* Streamlitのメインコンテンツに余白を追加して、バーに隠れないようにする */
+            .main .block-container {{ padding-bottom: 80px; }}
+        </style>
+        <nav class="bottom-nav">
+            {nav_items_html}
+        </nav>
+        <script>
+            let touchstartX = 0, touchendX = 0, touchstartY = 0, touchendY = 0;
+            const gestureZone = document.querySelector('.main');
+            if (gestureZone) {{
+                gestureZone.addEventListener('touchstart', e => {{
+                    touchstartX = e.changedTouches[0].screenX;
+                    touchstartY = e.changedTouches[0].screenY;
+                }}, {{passive: true}});
+                gestureZone.addEventListener('touchend', e => {{
+                    touchendX = e.changedTouches[0].screenX;
+                    touchendY = e.changedTouches[0].screenY;
+                    const deltaX = touchendX - touchstartX;
+                    const deltaY = touchendY - touchstartY;
+                    if (Math.abs(deltaX) > Math.abs(deltaY) + 30 && Math.abs(deltaX) > 50) {{
+                        const direction = (touchendX < touchstartX) ? 'left' : 'right';
+                        const url = new URL(window.location);
+                        url.searchParams.set('swipe', direction);
+                        url.searchParams.set('v', Date.now());
+                        window.location.href = url.href;
+                    }}
+                }}, {{passive: true}});
+            }}
+        </script>
+        """
+        st.markdown(bottom_nav_html, unsafe_allow_html=True)
+        
+        # サイドバーはログアウトボタンのみ表示
         with st.sidebar:
-            st.title(" ")
+            st.title(" ") 
             st.info(f"**名前:** {st.session_state.user_name}\n\n**従業員ID:** {get_user_employee_id(st.session_state.user_id)}")
             if st.button("ログアウト", use_container_width=True):
                 for key in st.session_state.keys():
