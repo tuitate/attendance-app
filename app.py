@@ -689,14 +689,6 @@ def show_shift_table_page():
             # 上で設定したピクセル数を各列の幅に設定
             column_config[col] = st.column_config.TextColumn(col, width=column_width_pixels)
 
-    # --- ★変更点④：st.dataframe に column_config を渡す ---
-    st.dataframe(
-        styled_df,
-        use_container_width=True,
-        hide_index=True,
-        column_config=column_config
-    )
-
     def highlight_user(column, name_to_highlight):
         styles = [''] * len(column)
         try:
