@@ -486,7 +486,9 @@ def show_shift_management_page():
     st.header("シフト管理")
     st.info("カレンダーの日付または登録済みのシフトをクリックして編集できます。")
 
-    # セッションにダイアログ表示用のキーがなければ初期化
+    # --- 変更点①：カレンダーをリセットするためのカウンターを導入 ---
+    if "calendar_key_counter" not in st.session_state:
+        st.session_state.calendar_key_counter = 0
     if "shift_dialog_date" not in st.session_state:
         st.session_state.shift_dialog_date = None
 
@@ -502,12 +504,9 @@ def show_shift_management_page():
         if start_dt.time() >= time(22, 0) or end_dt.time() <= time(5, 0):
             title += " (夜)"
         events.append({
-            "title": title,
-            "start": start_dt.isoformat(),
-            "end": end_dt.isoformat(),
+            "title": title, "start": start_dt.isoformat(), "end": end_dt.isoformat(),
             "color": "#FF6347" if (start_dt.time() >= time(22, 0) or end_dt.time() <= time(5, 0)) else "#1E90FF",
-            "id": shift['id'],
-            "allDay": False
+            "id": shift['id'], "allDay": False
         })
 
     col1, col2, col3 = st.columns([1, 6, 1])
@@ -522,21 +521,15 @@ def show_shift_management_page():
             st.session_state.calendar_date += relativedelta(months=1)
             st.rerun()
 
-    # --- 変更点：PC表示を安定させるため、keyを元の形式に戻し、オプションを再確認 ---
     calendar_result = calendar(
         events=events,
         options={
-            "headerToolbar": False,
-            "initialDate": st.session_state.calendar_date.isoformat(),
-            "initialView": "dayGridMonth",
-            "locale": "ja",
-            "selectable": True,
-            "height": "auto"  # PC表示の安定化に必須
+            "headerToolbar": False, "initialDate": st.session_state.calendar_date.isoformat(),
+            "initialView": "dayGridMonth", "locale": "ja", "selectable": True, "height": "auto"
         },
-        # 固定高さのCSS指定は削除したままにする
         custom_css=".fc-event-title { font-weight: 700; }\n.fc-toolbar-title { font-size: 1.5rem; }",
-        # keyを日付オブジェクト全体に紐づける形に戻し、安定性を試す
-        key=f"calendar_{st.session_state.calendar_date}"
+        # --- 変更点②：キーをカウンターに連動させる ---
+        key=f"calendar_{st.session_state.calendar_key_counter}"
     )
 
     if isinstance(calendar_result, dict):
@@ -553,9 +546,11 @@ def show_shift_management_page():
                 st.warning("過去の日付のシフトは変更できません。")
             else:
                 st.session_state.shift_dialog_date = clicked_date
+                # --- 変更点③：クリック時にカウンターを増やして、キーを強制的に変更する ---
+                st.session_state.calendar_key_counter += 1
                 st.rerun()
 
-    # モーダル表示のロジックはpop()を使った安定版のまま
+    # モーダル表示ロジックはpop()を使った安定版のまま
     if target_date := st.session_state.pop("shift_dialog_date", None):
         shift_edit_dialog(target_date)
 
