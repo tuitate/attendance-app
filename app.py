@@ -676,7 +676,7 @@ def show_shift_table_page():
     # 従業員名以外のすべての列の幅を "small" に設定
     for col in df.columns:
         if col != "従業員名":
-            column_config[col] = st.column_config.Column(width="small")
+            column_config[col] = st.column_config.Column(width="medium")
     
     st.dataframe(
         styled_df,
