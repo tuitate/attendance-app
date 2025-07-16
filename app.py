@@ -283,6 +283,7 @@ def broadcast_message_dialog():
 
 @st.dialog("シフト登録・編集")
 def shift_edit_dialog(target_date):
+    pass
     
 def show_login_register_page():
     st.header("ログインまたは新規登録")
