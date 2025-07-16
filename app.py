@@ -715,7 +715,7 @@ def unpin_user(user_id, user_to_unpin_id):
     finally:
         conn.close()
 
-def show_direct_message_page():   
+def show_direct_message_page():
     selected_user_id = st.session_state.get('dm_selected_user_id')
 
     if selected_user_id:
@@ -740,16 +740,18 @@ def show_direct_message_page():
         st.markdown("""
         <style>
             @media (max-width: 768px) {
+                /* dm-user-listクラス内の列レイアウトを強制的に横並びに保つ */
                 .dm-user-list [data-testid="stHorizontalBlock"] {
                     flex-direction: row !important;
-                    flex-wrap: nowrap !important;
+                    flex-wrap: nowrap !important; /* 折り返しを禁止 */
                 }
-
+                /* 各列の幅を再設定して維持 */
                 .dm-user-list [data-testid="stHorizontalBlock"] > div:nth-child(1) {
-                    flex: 1 1 0% !important;
+                    flex: 1 1 0% !important; /* ピンボタンの列 */
                 }
-                .dm_user-list [data-testid="stHorizontalBlock"] > div:nth-child(2) {
-                    flex: 5 1 0% !important;
+                /* タイプミスを修正: .dm_user-list -> .dm-user-list */
+                .dm-user-list [data-testid="stHorizontalBlock"] > div:nth-child(2) {
+                    flex: 5 1 0% !important; /* 名前ボタンの列 */
                 }
             }
         </style>
