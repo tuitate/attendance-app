@@ -940,7 +940,6 @@ def show_user_registration_page():
 def get_work_hours_data(start_date, end_date):
     """指定された期間の実働時間データを取得する"""
     conn = get_db_connection()
-    # 列名でデータにアクセスできるように設定
     conn.row_factory = sqlite3.Row
     
     work_data = {}
@@ -965,7 +964,8 @@ def get_work_hours_data(start_date, end_date):
                 if br['break_start'] and br['break_end']:
                     break_seconds += (datetime.fromisoformat(br['break_end']) - datetime.fromisoformat(br['break_start'])).total_seconds()
             
-            actual_work_hours = (total_seconds - break_seconds) / 3600
+            # ★★★ 修正点: 時間を整数に丸める ★★★
+            actual_work_hours = round((total_seconds - break_seconds) / 3600)
             work_date = date.fromisoformat(att['work_date'])
             if actual_work_hours > 0:
                 work_data[work_date] = actual_work_hours
@@ -975,7 +975,7 @@ def get_work_hours_data(start_date, end_date):
 def show_work_status_page():
     st.header("出勤状況")
     
-    # --- 上部の月間サマリー表示 ---
+    # --- ★★★ 修正点: 4つのメトリクス表示に戻す ★★★ ---
     col1, col2, col3 = st.columns([1, 6, 1])
     with col1:
         if st.button("先月", key="status_prev"):
@@ -998,7 +998,11 @@ def show_work_status_page():
     shifts_dict = {row['work_date']: dict(row) for row in shifts_records}
     attendances = conn.execute("SELECT id, work_date, clock_in, clock_out FROM attendance WHERE user_id = ? AND work_date BETWEEN ? AND ?", (st.session_state.user_id, first_day_month.isoformat(), last_day_month.isoformat())).fetchall()
 
+    total_scheduled_seconds = 0
     total_actual_work_seconds = 0
+    total_break_seconds = 0
+    total_overtime_seconds = 0
+
     for att in attendances:
         if att['clock_in'] and att['clock_out']:
             clock_in_dt = datetime.fromisoformat(att['clock_in'])
@@ -1008,8 +1012,20 @@ def show_work_status_page():
             for br in breaks:
                 if br['break_start'] and br['break_end']:
                     daily_break_seconds += (datetime.fromisoformat(br['break_end']) - datetime.fromisoformat(br['break_start'])).total_seconds()
-            total_actual_work_seconds += (clock_out_dt - clock_in_dt).total_seconds() - daily_break_seconds
+            
+            net_daily_work_seconds = (clock_out_dt - clock_in_dt).total_seconds() - daily_break_seconds
+            total_actual_work_seconds += net_daily_work_seconds
+            total_break_seconds += daily_break_seconds
 
+            daily_shift = shifts_dict.get(att['work_date'])
+            if daily_shift:
+                scheduled_end_dt = datetime.fromisoformat(daily_shift['end_datetime']).replace(tzinfo=JST)
+                if clock_out_dt > scheduled_end_dt:
+                    total_overtime_seconds += (clock_out_dt - scheduled_end_dt).total_seconds()
+
+    for shift in shifts_dict.values():
+        total_scheduled_seconds += (datetime.fromisoformat(shift['end_datetime']) - datetime.fromisoformat(shift['start_datetime'])).total_seconds()
+    
     conn.close()
 
     def format_seconds_to_hours_minutes(seconds):
@@ -1017,13 +1033,32 @@ def show_work_status_page():
         minutes, _ = divmod(remainder, 60)
         return f"{hours}時間 {minutes:02}分"
 
+    scheduled_str = format_seconds_to_hours_minutes(total_scheduled_seconds)
     actual_str = format_seconds_to_hours_minutes(total_actual_work_seconds)
+    break_str = format_seconds_to_hours_minutes(total_break_seconds)
+    overtime_str = format_seconds_to_hours_minutes(total_overtime_seconds)
+
     st.divider()
-    st.metric("当月の実働時間合計", actual_str)
+    m_col1, m_col2 = st.columns(2)
+    m_col3, m_col4 = st.columns(2)
+    m_col1.metric("出勤予定時間", scheduled_str)
+    m_col2.metric("実働時間", actual_str)
+    m_col3.metric("合計休憩時間", break_str)
+    m_col4.metric("時間外労働時間", overtime_str)
     st.divider()
 
-    # --- グラフ表示セクション ---
+    # --- ★★★ ここからグラフ表示のロジックを全面的に修正 ★★★ ---
     st.subheader("📊 実働時間グラフ")
+    
+    # Altairチャートを作成するヘルパー関数
+    def create_altair_chart(df, x_title, y_title):
+        chart = alt.Chart(df).mark_bar().encode(
+            x=alt.X('index:N', title=x_title, axis=alt.Axis(labelAngle=-90)),
+            y=alt.Y('実働時間:Q', title=y_title, axis=alt.Axis(format='d')),
+            tooltip=[alt.Tooltip('index', title=x_title), alt.Tooltip('実働時間', title=y_title)]
+        ).interactive(bind_y=False) # Y軸のズームを無効化
+        return chart
+
     tab7, tab30, tab_year = st.tabs(["過去7日間", "当月", "当年"])
 
     with tab7:
@@ -1036,7 +1071,10 @@ def show_work_status_page():
             df_week = pd.DataFrame(list(weekly_data.values()), index=list(weekly_data.keys()), columns=['実働時間'])
             weekday_jp = ["月", "火", "水", "木", "金", "土", "日"]
             df_week.index = [f"{d.strftime('%d日')}({weekday_jp[d.weekday()]})" for d in df_week.index]
-            st.bar_chart(df_week, y='実働時間', height=400, use_container_width=True)
+            df_week.reset_index(inplace=True) # Altairのためにインデックスを列に変換
+            
+            chart = create_altair_chart(df_week, "日付", "実働時間 (時間)")
+            st.altair_chart(chart, use_container_width=True)
         else:
             st.info("この期間のデータはありません。")
 
@@ -1048,8 +1086,11 @@ def show_work_status_page():
 
         if any(v > 0 for v in monthly_data.values()):
             df_month = pd.DataFrame(list(monthly_data.values()), index=list(monthly_data.keys()), columns=['実働時間'])
-            df_month.index = [d.day for d in df_month.index]
-            st.bar_chart(df_month, y='実働時間', height=400, use_container_width=True)
+            df_month.index = [f"{d.day}日" for d in df_month.index] # 「日」を追加
+            df_month.reset_index(inplace=True)
+
+            chart = create_altair_chart(df_month, "日", "実働時間 (時間)")
+            st.altair_chart(chart, use_container_width=True)
         else:
             st.info("この期間のデータはありません。")
 
@@ -1067,7 +1108,10 @@ def show_work_status_page():
             all_months['実働時間'] = monthly_total
             all_months.fillna(0, inplace=True)
             all_months.index = [f"{m}月" for m in all_months.index]
-            st.bar_chart(all_months, y='実働時間', height=400, use_container_width=True)
+            all_months.reset_index(inplace=True)
+            
+            chart = create_altair_chart(all_months, "月", "実働時間 (時間)")
+            st.altair_chart(chart, use_container_width=True)
         else:
             st.info("この期間のデータはありません。")
 
