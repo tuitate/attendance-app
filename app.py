@@ -310,14 +310,15 @@ def shift_edit_form(target_date):
             default_end = datetime.combine(default_end_date, st.session_state.last_shift_end_time)
 
         # フォームを使って入力欄をグループ化
-        with st.form(key=f"shift_form_{target_date}", clear_on_submit=True):
+        with st.form(key=f"shift_form_{target_date}"):
             c1, c2 = st.columns(2)
             with c1:
-                start_date_input = st.date_input("出勤日", value=default_start.date())
-                end_date_input = st.date_input("退勤日", value=default_end.date())
+                # ★スマホ対応：各入力にユニークなキーを追加
+                start_date_input = st.date_input("出勤日", value=default_start.date(), key=f"start_date_{target_date}")
+                end_date_input = st.date_input("退勤日", value=default_end.date(), key=f"end_date_{target_date}")
             with c2:
-                start_time_input = st.time_input("出勤時刻", value=default_start.time())
-                end_time_input = st.time_input("退勤時刻", value=default_end.time())
+                start_time_input = st.time_input("出勤時刻", value=default_start.time(), key=f"start_time_{target_date}")
+                end_time_input = st.time_input("退勤時刻", value=default_end.time(), key=f"end_time_{target_date}")
 
             start_datetime = datetime.combine(start_date_input, start_time_input)
             end_datetime = datetime.combine(end_date_input, end_time_input)
@@ -506,20 +507,18 @@ def show_shift_management_page():
     st.header("シフト管理")
     st.info("カレンダーの日付または登録済みのシフトをクリックして編集できます。")
 
-    # --- 変更点①：状態管理変数をシンプルにする ---
+    # 状態管理変数を初期化
     if 'show_shift_modal' not in st.session_state:
         st.session_state.show_shift_modal = False
     if 'modal_target_date' not in st.session_state:
         st.session_state.modal_target_date = None
 
-    # --- 変更点②：モーダル表示を、ページの上部または下部で一括管理 ---
-    # `show_shift_modal`がTrueなら、フォーム描画関数を呼び出す
+    # ★最重要ポイント：フォームを表示するか、カレンダーを表示するかをif文で明確に分ける
     if st.session_state.show_shift_modal and st.session_state.modal_target_date:
+        # フォーム表示の命令があれば、フォーム描画関数を呼び出す
         shift_edit_form(st.session_state.modal_target_date)
-        # フォームが表示されている間は、カレンダーを非表示にして誤操作を防ぐ
-        st.divider()
     else:
-        # --- フォームが表示されていない時だけ、カレンダーを描画 ---
+        # フォームが表示されていない時だけ、カレンダーを描画する
         conn = get_db_connection()
         shifts = conn.execute('SELECT id, start_datetime, end_datetime FROM shifts WHERE user_id = ?', (st.session_state.user_id,)).fetchall()
         conn.close()
@@ -556,10 +555,10 @@ def show_shift_management_page():
                 "initialView": "dayGridMonth", "locale": "ja", "selectable": True, "height": "auto"
             },
             custom_css=".fc-event-title { font-weight: 700; }\n.fc-toolbar-title { font-size: 1.5rem; }",
-            key="shift_calendar_main"
+            key="shift_calendar_main" # キーは固定してOK
         )
 
-        # --- 変更点③：クリックされたら、フォーム表示の「命令」を出すだけにする ---
+        # カレンダーがクリックされたら、フォーム表示の「命令」を出す
         if isinstance(calendar_result, dict):
             clicked_date = None
             if 'dateClick' in calendar_result:
@@ -576,7 +575,7 @@ def show_shift_management_page():
                     # フォーム表示のフラグを立て、日付を保存する
                     st.session_state.show_shift_modal = True
                     st.session_state.modal_target_date = clicked_date
-                    # ここでrerunを呼ぶことで、ページの先頭のロジックが実行されフォームが表示される
+                    # rerunを呼ぶことで、ページの先頭から再実行され、if文の条件が変わりフォームが表示される
                     st.rerun()
         
 def show_shift_table_page():
