@@ -486,6 +486,7 @@ def show_shift_management_page():
     st.header("シフト管理")
     st.info("カレンダーの日付または登録済みのシフトをクリックして編集できます。")
 
+    # セッションにダイアログ表示用のキーがなければ初期化
     if "shift_dialog_date" not in st.session_state:
         st.session_state.shift_dialog_date = None
 
@@ -551,9 +552,9 @@ def show_shift_management_page():
                 st.session_state.shift_dialog_date = clicked_date
                 st.rerun()
 
-    if st.session_state.shift_dialog_date:
-        target_date = st.session_state.shift_dialog_date
-        st.session_state.shift_dialog_date = None
+    # --- 変更点：モーダル表示の条件分岐を修正 ---
+    # st.session_stateから値を取り出しつつ、同時に削除するpop()を使う
+    if target_date := st.session_state.pop("shift_dialog_date", None):
         shift_edit_dialog(target_date)
 
 def show_shift_table_page():
