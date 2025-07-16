@@ -347,7 +347,6 @@ def show_login_register_page():
                         st.error("その従業員IDは既に使用されています。")
 
 def show_timecard_page():
-    st.session_state.page = "タイムカード"
     st_autorefresh(interval=1000, key="clock_refresh")
     st.title(f"ようこそ、{st.session_state.user_name}さん")
     st.header(get_jst_now().strftime("%Y-%m-%d %H:%M:%S"))
@@ -511,7 +510,6 @@ def render_shift_edit_form(target_date):
                 st.warning("削除するシフトが登録されていません。")
 
 def show_shift_management_page():
-    st.session_state.page = "シフト管理"
     st.header("シフト管理")
 
     # 編集中の日付がある場合はフォームを、ない場合はカレンダーを表示
@@ -588,7 +586,6 @@ def show_shift_management_page():
                     st.rerun()
 
 def show_shift_table_page():
-    st.session_state.page = "月間シフト表"
     st.header("月間シフト表")
     col1, col2, col3 = st.columns([1, 6, 1])
     with col1:
@@ -699,7 +696,6 @@ def show_shift_table_page():
     st.dataframe(styled_df, use_container_width=True, hide_index=True)
 
 def show_direct_message_page():
-    st.session_state.page = "ダイレクトメッセージ"
     selected_user_id = st.session_state.get('dm_selected_user_id')
 
     if selected_user_id:
@@ -761,7 +757,6 @@ def show_direct_message_page():
                     st.rerun()
             
 def show_messages_page():
-    st.session_state.page = "全体メッセージ"
     st.header("全体メッセージ")
     col1, col2 = st.columns([2, 1])
     with col1:
@@ -834,7 +829,6 @@ def show_messages_page():
     conn.close()
 
 def show_user_info_page():
-    st.session_state.page = "ユーザー情報"
     st.header("ユーザー情報")
     conn = get_db_connection()
     user_data = conn.execute('SELECT name, employee_id, created_at, password_hash, company, position FROM users WHERE id = ?', (st.session_state.user_id,)).fetchone()
@@ -892,7 +886,6 @@ def confirm_delete_user_dialog(user_id, user_name):
             st.rerun()
 
 def show_employee_information_page():
-    st.session_state.page = "従業員情報"
     st.header("従業員情報")
     st.info("あなたの会社の全従業員の情報を表示しています。")
 
@@ -980,7 +973,6 @@ def show_user_registration_page():
                     st.error("その従業員IDは既に使用されています。")
 
 def show_work_status_page():
-    st.session_state.page = "出勤状況"
     st.header("出勤状況")
     col1, col2, col3 = st.columns([1, 6, 1])
     with col1:
@@ -1244,69 +1236,89 @@ def main():
     if not st.session_state.get('logged_in'):
         show_login_register_page()
     else:
-        if st.session_state.get('page') != "ダイレクトメッセージ":
-            st.session_state.dm_selected_user_id = None
+        # データベースから未読件数などを取得
         conn = get_db_connection()
         current_user_id = st.session_state.user_id
         broadcast_unread_count = conn.execute("SELECT COUNT(*) FROM messages WHERE user_id = ? AND is_read = 0 AND message_type IN ('BROADCAST', 'SYSTEM')", (current_user_id,)).fetchone()[0]
-        dm_unread_count = conn.execute("SELECT COUNT(*) FROM messages WHERE user_id = ? AND is_read = 0 AND message_type = 'DIRECT'", (current_user_id,)).fetchone()
-        
+        dm_unread_count = conn.execute("SELECT COUNT(*) FROM messages WHERE user_id = ? AND is_read = 0 AND message_type = 'DIRECT'", (current_user_id,)).fetchone()[0]
         unread_dm_senders = conn.execute("SELECT DISTINCT u.id, u.name FROM messages m JOIN users u ON m.sender_id = u.id WHERE m.user_id = ? AND m.is_read = 0 AND m.message_type = 'DIRECT'", (current_user_id,)).fetchall()
         conn.close()
 
+        # 新着メッセージの通知
         if unread_dm_senders:
             with st.container(border=True):
                 st.info("🔔 新着メッセージがあります！")
                 for sender in unread_dm_senders:
                     if st.button(f"📩 **{sender['name']}さん**から新しいメッセージが届いています。", key=f"dm_notification_{sender['id']}", use_container_width=True):
                         st.session_state.dm_selected_user_id = sender['id']
-                        st.info("下の「DM」タブを開いてください。")
+                        # DMタブが自動で開かれるようにページ状態を更新
+                        st.session_state.page = "ダイレクトメッセージ" 
+                        st.rerun()
 
-        tab_titles = []
-        tab_icons = []
-
+        # --- ★★★ ここからタブ管理のロジックを修正 ★★★ ---
+        
+        # 表示するページの順番を定義
         ordered_page_keys = ["タイムカード", "シフト管理", "シフト表", "出勤状況", "全体メッセージ", "ダイレクトメッセージ", "ユーザー情報"]
         if st.session_state.user_position in ["社長", "役職者"]:
             ordered_page_keys.insert(1, "従業員情報")
             ordered_page_keys.insert(1, "ユーザー登録")
 
+        # 各ページの情報を定義
         page_definitions = {
-            "タイムカード": {"icon": "⏰"}, "シフト管理": {"icon": "🗓️"}, "シフト表": {"icon": "📊"},
-            "出勤状況": {"icon": "📈"}, "全体メッセージ": {"icon": "📢", "unread": broadcast_unread_count},
-            "ダイレクトメッセージ": {"icon": "💬", "unread": dm_unread_count[0] if dm_unread_count else 0}, "ユーザー情報": {"icon": "👤"},
-            "従業員情報": {"icon": "👥"}, "ユーザー登録": {"icon": "📝"}
+            "タイムカード": {"icon": "⏰", "func": show_timecard_page},
+            "シフト管理": {"icon": "🗓️", "func": show_shift_management_page},
+            "シフト表": {"icon": "📊", "func": show_shift_table_page},
+            "出勤状況": {"icon": "📈", "func": show_work_status_page},
+            "全体メッセージ": {"icon": "📢", "unread": broadcast_unread_count, "func": show_messages_page},
+            "ダイレクトメッセージ": {"icon": "💬", "unread": dm_unread_count, "func": show_direct_message_page},
+            "ユーザー情報": {"icon": "👤", "func": show_user_info_page},
+            "従業員情報": {"icon": "👥", "func": show_employee_information_page},
+            "ユーザー登録": {"icon": "📝", "func": show_user_registration_page}
         }
 
-        for page_key in ordered_page_keys:
-            info = page_definitions.get(page_key)
+        # タブのタイトルリストを作成
+        tab_titles = []
+        for key in ordered_page_keys:
+            info = page_definitions.get(key)
             if info:
-                label = page_key
+                label = key
                 if info.get('unread', 0) > 0:
                     label += " 🔴"
                 tab_titles.append(label)
 
-        tabs = st.tabs(tab_titles)
+        # 現在選択されているタブのインデックスを決定
+        try:
+            current_page_index = ordered_page_keys.index(st.session_state.get('page', 'タイムカード'))
+        except ValueError:
+            current_page_index = 0 # もしページが見つからなければ先頭のタブにする
 
-        page_function_map = {
-            "タイムカード": show_timecard_page, "ユーザー登録": show_user_registration_page,
-            "従業員情報": show_employee_information_page, "シフト管理": show_shift_management_page,
-            "シフト表": show_shift_table_page, "出勤状況": show_work_status_page,
-            "全体メッセージ": show_messages_page, "ダイレクトメッセージ": show_direct_message_page,
-            "ユーザー情報": show_user_info_page
-        }
+        # st.tabsを描画し、選択されたタブのインデックスを取得
+        selected_tab_index = st.tabs(tab_titles).index(st.session_state.get('page', 'タイムカード'))
 
-        for i, tab in enumerate(tabs):
-            with tab:
-                page_key_to_render = ordered_page_keys[i]
-                render_function = page_function_map.get(page_key_to_render)
-                if render_function:
-                    render_function()
+
+        # 選択されたタブのページ名を取得
+        selected_page = ordered_page_keys[selected_tab_index]
+
+        # ページが切り替わったかチェック
+        if st.session_state.get('page') != selected_page:
+            # DMページ以外に切り替わったら、選択中のDM相手をリセット
+            if selected_page != "ダイレクトメッセージ":
+                st.session_state.dm_selected_user_id = None
+            # 現在のページを更新
+            st.session_state.page = selected_page
+            st.rerun()
+
+        # 選択されたページに対応する関数を実行
+        render_function = page_definitions[selected_page]["func"]
+        render_function()
+
+        # --- ★★★ ここまでタブ管理のロジックを修正 ★★★ ---
 
         with st.sidebar:
             st.title(" ")
             st.info(f"**名前:** {st.session_state.user_name}\n\n**従業員ID:** {get_user_employee_id(st.session_state.user_id)}")
             if st.button("ログアウト", use_container_width=True):
-                for key in st.session_state.keys():
+                for key in list(st.session_state.keys()):
                     del st.session_state[key]
                 st.rerun()
 
