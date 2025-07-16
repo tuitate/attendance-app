@@ -766,7 +766,7 @@ def show_messages_page():
     st.header("全体メッセージ")
     col1, col2 = st.columns([2, 1])
     with col1:
-        st.header("全体メッセージ")
+        pass
     with col2:
         if st.button("📝 全社へメッセージを送信する", use_container_width=True, type="primary"):
             st.session_state.show_broadcast_dialog = True
