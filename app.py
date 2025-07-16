@@ -1256,12 +1256,9 @@ def main():
                 for sender in unread_dm_senders:
                     if st.button(f"📩 **{sender['name']}さん**から新しいメッセージが届いています。", key=f"dm_notification_{sender['id']}", use_container_width=True):
                         st.session_state.dm_selected_user_id = sender['id']
-                        # DMタブが自動で開かれるようにページ状態を更新
-                        st.session_state.navigation_choice = "ダイレクトメッセージ"
-                        st.rerun()
-        
-        # --- ★★★ ここからナビゲーションの仕組みを変更 ★★★ ---
-        
+                        st.info("下の「DM」タブを開いてください。")
+
+        # ページの定義
         ordered_page_keys = ["タイムカード", "シフト管理", "シフト表", "出勤状況", "全体メッセージ", "ダイレクトメッセージ", "ユーザー情報"]
         if st.session_state.user_position in ["社長", "役職者"]:
             ordered_page_keys.insert(1, "従業員情報")
@@ -1279,43 +1276,32 @@ def main():
             "ユーザー登録": {"icon": "📝", "func": show_user_registration_page}
         }
 
-        # ラジオボタンを使ってタブのようなナビゲーションを作成
-        # ラベルに未読マークを追加
-        radio_options = []
+        # タブのタイトルリストを作成
+        tab_titles = []
         for key in ordered_page_keys:
             info = page_definitions.get(key)
             if info:
+                # アイコンと未読マークをタイトルに追加
                 label = f"{info['icon']} {key}"
                 if info.get('unread', 0) > 0:
                     label += " 🔴"
-                radio_options.append(label)
+                tab_titles.append(label)
 
-        # デフォルトで選択されるページを設定
-        if 'navigation_choice' not in st.session_state:
-            st.session_state.navigation_choice = radio_options[0]
+        # st.tabsでタブを描画
+        tabs = st.tabs(tab_titles)
 
-        # st.radioでナビゲーションを描画
-        selected_label = st.radio(
-            "メインメニュー",
-            options=radio_options,
-            key='navigation_choice',
-            on_change=handle_page_change, # ページが切り替わったらhandle_page_changeを実行
-            horizontal=True,
-            label_visibility="collapsed" # "メインメニュー"のラベルを非表示
-        )
-        
-        # 選択されたラベルから元のページ名（キー）を取得
-        selected_key = selected_label.split(" ")[1]
-
-        # 選択されたページに対応する関数を実行
-        page_definitions[selected_key]["func"]()
-        
-        # --- ★★★ ここまで ★★★ ---
+        # 各タブの中身を描画
+        for i, tab in enumerate(tabs):
+            with tab:
+                page_key_to_render = ordered_page_keys[i]
+                render_function = page_definitions[page_key_to_render]["func"]
+                render_function()
 
         with st.sidebar:
             st.title(" ")
             st.info(f"**名前:** {st.session_state.user_name}\n\n**従業員ID:** {get_user_employee_id(st.session_state.user_id)}")
             if st.button("ログアウト", use_container_width=True):
+                # セッションステートをクリアしてログアウト
                 for key in list(st.session_state.keys()):
                     del st.session_state[key]
                 st.rerun()
