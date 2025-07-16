@@ -699,7 +699,18 @@ def show_shift_table_page():
         return styles
 
     styled_df = df.style.apply(highlight_user, name_to_highlight=current_user_display_name, subset=['従業員名'])
-    st.dataframe(styled_df, use_container_width=True, hide_index=True)
+
+date_column_config = {
+        col: st.column_config.Column(width="medium") 
+        for col in df.columns if col != '従業員名'
+    }
+
+    st.dataframe(
+        styled_df,
+        use_container_width=True,
+        hide_index=True,
+        column_config=date_column_config # 作成した設定を渡す
+    )
 
 def show_direct_message_page():
     selected_user_id = st.session_state.get('dm_selected_user_id')
