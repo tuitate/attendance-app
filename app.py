@@ -785,39 +785,43 @@ def show_messages_page():
     else:
         for msg in messages:
             with st.container(border=True):
-                is_confirming_this_message = st.session_state.get('confirming_delete_message_created_at') == msg['created_at']
+                # ★★★ The following lines are corrected to use indexes ★★★
+                created_at_str = msg[2]
+                is_confirming_this_message = st.session_state.get('confirming_delete_message_created_at') == created_at_str
 
                 if is_confirming_this_message:
                     st.warning("このメッセージを全ユーザーから削除します。よろしいですか？")
                     c1, c2 = st.columns(2)
                     with c1:
-                        if st.button("はい、削除します", key=f"confirm_delete_{msg['id']}", type="primary", use_container_width=True):
-                            delete_broadcast_message(msg['created_at'])
+                        if st.button("はい、削除します", key=f"confirm_delete_{msg[0]}", type="primary", use_container_width=True):
+                            delete_broadcast_message(created_at_str)
                             st.session_state.confirming_delete_message_created_at = None
                             st.toast("メッセージを削除しました。")
                             st.rerun()
                     with c2:
-                        if st.button("いいえ", key=f"cancel_delete_{msg['id']}", use_container_width=True):
+                        if st.button("いいえ", key=f"cancel_delete_{msg[0]}", use_container_width=True):
                             st.session_state.confirming_delete_message_created_at = None
                             st.rerun()
                 else:
                     msg_col1, msg_col2 = st.columns([4, 1])
                     with msg_col1:
-                        created_at_dt = datetime.fromisoformat(msg['created_at'])
+                        created_at_dt = datetime.fromisoformat(created_at_str)
                         st.markdown(f"**{created_at_dt.strftime('%Y年%m月%d日 %H:%M')}**")
                     with msg_col2:
-                        is_broadcast = msg['content'] and msg['content'].startswith("**【お知らせ】")
-                        if is_broadcast and msg['sender_id'] == st.session_state.user_id:
-                            if st.button("🗑️ 削除", key=f"delete_{msg['id']}", use_container_width=True):
-                                st.session_state.confirming_delete_message_created_at = msg['created_at']
+                        content_str = msg[1]
+                        is_broadcast = content_str and content_str.startswith("**【お知らせ】")
+                        if is_broadcast and msg[6] == st.session_state.user_id: # sender_id is at index 6
+                            if st.button("🗑️ 削除", key=f"delete_{msg[0]}", use_container_width=True): # id is at index 0
+                                st.session_state.confirming_delete_message_created_at = created_at_str
                                 st.rerun()
                     
-                    if msg['content']:
-                        st.markdown(msg['content'])
-                    if msg['file_base64']:
-                        file_bytes = base64.b64decode(msg['file_base64'])
-                        file_type = msg.get('file_type')
-                        file_name = msg.get('file_name', 'downloaded_file')
+                    if msg[1]: # content is at index 1
+                        st.markdown(msg[1])
+                    if msg[3]: # file_base64 is at index 3
+                        file_bytes = base64.b64decode(msg[3])
+                        file_type = msg[5] # file_type is at index 5
+                        file_name = msg[4] or "downloaded_file" # file_name is at index 4
+
                         if file_type and file_type.startswith("image/"):
                             st.image(file_bytes)
                         else:
