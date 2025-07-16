@@ -486,11 +486,11 @@ def show_shift_management_page():
     st.header("シフト管理")
     st.info("カレンダーの日付または登録済みのシフトをクリックして編集できます。")
 
-    # --- 変更点①：カレンダーをリセットするためのカウンターを導入 ---
-    if "calendar_key_counter" not in st.session_state:
-        st.session_state.calendar_key_counter = 0
+    # セッション state の初期化
     if "shift_dialog_date" not in st.session_state:
         st.session_state.shift_dialog_date = None
+    if "calendar_key_counter" not in st.session_state:
+        st.session_state.calendar_key_counter = 0
 
     conn = get_db_connection()
     shifts = conn.execute('SELECT id, start_datetime, end_datetime FROM shifts WHERE user_id = ?', (st.session_state.user_id,)).fetchall()
@@ -521,6 +521,8 @@ def show_shift_management_page():
             st.session_state.calendar_date += relativedelta(months=1)
             st.rerun()
 
+    # --- 変更点①：カレンダーのキーをカウンターに紐づける ---
+    # これにより、クリック後にカレンダーの状態をリセットする
     calendar_result = calendar(
         events=events,
         options={
@@ -528,10 +530,10 @@ def show_shift_management_page():
             "initialView": "dayGridMonth", "locale": "ja", "selectable": True, "height": "auto"
         },
         custom_css=".fc-event-title { font-weight: 700; }\n.fc-toolbar-title { font-size: 1.5rem; }",
-        # --- 変更点②：キーをカウンターに連動させる ---
         key=f"calendar_{st.session_state.calendar_key_counter}"
     )
 
+    # --- 変更点②：クリックされたら、状態をセットする（再実行はしない）---
     if isinstance(calendar_result, dict):
         clicked_date = None
         if 'dateClick' in calendar_result:
@@ -545,15 +547,22 @@ def show_shift_management_page():
             if clicked_date < date.today():
                 st.warning("過去の日付のシフトは変更できません。")
             else:
+                # ダイアログに渡す日付をセット
                 st.session_state.shift_dialog_date = clicked_date
-                # --- 変更点③：クリック時にカウンターを増やして、キーを強制的に変更する ---
+                # カレンダーのキーを更新して、次回実行時にカレンダーをリセットする
                 st.session_state.calendar_key_counter += 1
+                # ここで st.rerun() を呼び出さないのが重要！
                 st.rerun()
 
-    # モーダル表示ロジックはpop()を使った安定版のまま
-    if target_date := st.session_state.pop("shift_dialog_date", None):
+    # --- 変更点③：状態をチェックして、ダイアログを呼び出す ---
+    # このロジックにより、クリックされたのと同じ実行サイクルでダイアログが開く
+    if st.session_state.shift_dialog_date:
+        target_date = st.session_state.shift_dialog_date
+        # すぐに状態をクリアして、不要な再表示を防ぐ
+        st.session_state.shift_dialog_date = None
+        # ダイアログを呼び出す
         shift_edit_dialog(target_date)
-
+        
 def show_shift_table_page():
     st.header("月間シフト表")
     col1, col2, col3 = st.columns([1, 6, 1])
