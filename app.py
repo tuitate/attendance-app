@@ -742,6 +742,18 @@ def show_direct_message_page():
         st.header("ダイレクトメッセージ")
         st.subheader("宛先リスト")
 
+        st.markdown("""
+        <style>
+            /* 画面幅が640px以下のとき（スマホなど）に適用 */
+            @media (max-width: 640px) {
+                /* dm-user-listクラス内の列レイアウトを強制的に横並びに保つ */
+                .dm-user-list [data-testid="stHorizontalBlock"] {
+                    flex-direction: row !important;
+                }
+            }
+        </style>
+        """, unsafe_allow_html=True)
+
         conn = get_db_connection()
         current_user_id = st.session_state.user_id
         
