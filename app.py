@@ -606,13 +606,13 @@ def show_shift_table_page():
             st.rerun()
 
     # --- ★★★ ここから修正 ★★★ ---
-    # 日付の列の幅を指定します。
-    desired_width_pixels = 80 
+    # この数値を大きくすると、全ての列の幅が広がります
+    desired_width_pixels = 120 
     css = f"""
     <style>
-        /* 1列目（従業員名）以外の全ての列に幅を指定します */
-        .stDataFrame th:not(:first-child), 
-        .stDataFrame td:not(:first-child) {{
+        /* 全ての列に同じ幅を指定します */
+        .stDataFrame th, 
+        .stDataFrame td {{
             min-width: {desired_width_pixels}px !important;
             max-width: {desired_width_pixels}px !important;
             width: {desired_width_pixels}px !important;
@@ -684,6 +684,13 @@ def show_shift_table_page():
             pass
         return styles
 
+    styled_df = df.style.apply(highlight_user, name_to_highlight=current_user_display_name, subset=['従業員名'])
+    
+    st.dataframe(
+        styled_df,
+        use_container_width=True,
+        hide_index=True
+    )
     styled_df = df.style.apply(highlight_user, name_to_highlight=current_user_display_name, subset=['従業員名'])
     
     st.dataframe(
