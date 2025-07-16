@@ -603,7 +603,7 @@ def show_shift_table_page():
             /* 文字列が改行されるのを防ぐ (例: "02:00" と "～"で分かれないようにする) */
             white-space: nowrap;
             /* 最低でも90ピクセルの幅を確保する */
-            min-width: 90px;
+            min-width: 150px;
         }
     </style>
     """
