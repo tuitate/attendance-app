@@ -349,7 +349,10 @@ def shift_edit_form(target_date):
             with c2:
                  # 削除ボタン
                 if st.form_submit_button("削除", use_container_width=True):
-                    if existing_shift:
+                    # ★変更点：先にボタンが押されたことを検知し、その後にシフトの有無をチェックする
+                    if not existing_shift:
+                        st.warning("削除するシフトがありません。")
+                    else:
                         conn = get_db_connection()
                         conn.execute('DELETE FROM shifts WHERE id = ?', (existing_shift['id'],))
                         conn.commit()
@@ -358,8 +361,6 @@ def shift_edit_form(target_date):
                         # フォームを閉じる
                         st.session_state.show_shift_modal = False
                         st.rerun()
-                    else:
-                        st.warning("削除するシフトがありません。")
                         
 def show_login_register_page():
     st.header("ログインまたは新規登録")
