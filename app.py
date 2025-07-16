@@ -522,6 +522,7 @@ def show_shift_management_page():
             st.session_state.calendar_date += relativedelta(months=1)
             st.rerun()
 
+    # --- 変更点：PC表示を安定させるため、keyを元の形式に戻し、オプションを再確認 ---
     calendar_result = calendar(
         events=events,
         options={
@@ -530,10 +531,12 @@ def show_shift_management_page():
             "initialView": "dayGridMonth",
             "locale": "ja",
             "selectable": True,
-            "height": "auto"
+            "height": "auto"  # PC表示の安定化に必須
         },
+        # 固定高さのCSS指定は削除したままにする
         custom_css=".fc-event-title { font-weight: 700; }\n.fc-toolbar-title { font-size: 1.5rem; }",
-        key=f"calendar_{st.session_state.calendar_date.strftime('%Y%m')}"
+        # keyを日付オブジェクト全体に紐づける形に戻し、安定性を試す
+        key=f"calendar_{st.session_state.calendar_date}"
     )
 
     if isinstance(calendar_result, dict):
@@ -552,8 +555,7 @@ def show_shift_management_page():
                 st.session_state.shift_dialog_date = clicked_date
                 st.rerun()
 
-    # --- 変更点：モーダル表示の条件分岐を修正 ---
-    # st.session_stateから値を取り出しつつ、同時に削除するpop()を使う
+    # モーダル表示のロジックはpop()を使った安定版のまま
     if target_date := st.session_state.pop("shift_dialog_date", None):
         shift_edit_dialog(target_date)
 
