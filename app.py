@@ -276,12 +276,9 @@ def broadcast_message_dialog():
                     file_type = uploaded_file.type
                 
                 add_broadcast_message(st.session_state.user_id, message_body, st.session_state.user_company, file_base64, file_name, file_type)
-
                 st.toast("メッセージを送信しました！", icon="✅")
+                st.rerun()
                 
-                # ★★★ 修正点: ダイアログを閉じるために状態をFalseに戻す ★★★
-                st.session_state.show_broadcast_dialog = False
-                st.rerun() # ページを再読み込みしてダイアログを閉じる
             else:
                 st.warning("メッセージ内容を入力するか、ファイルを添付してください。")
 
@@ -771,8 +768,8 @@ def show_messages_page():
             st.session_state.show_broadcast_dialog = True
             st.rerun()
 
-    # ★★★ 修正点: セッションの状態がTrueの場合のみダイアログを呼び出す ★★★
-    if st.session_state.get('show_broadcast_dialog'):
+if st.session_state.get('show_broadcast_dialog'):
+        st.session_state.show_broadcast_dialog = False
         broadcast_message_dialog()
 
     st.divider()
