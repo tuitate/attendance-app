@@ -561,7 +561,7 @@ def show_shift_management_page():
                 "initialView": "dayGridMonth", "locale": "ja", "selectable": True, "height": "auto"
             },
             custom_css=".fc-event-title { font-weight: 700; } .fc-view-harness { height: 650px !important; }",
-            key="shift_calendar"
+            key=f"calendar_{st.session_state.calendar_date.year}_{st.session_state.calendar_date.month}"
         )
 
         # カレンダーがクリックされたときの処理
