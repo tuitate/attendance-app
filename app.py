@@ -595,16 +595,12 @@ def show_shift_table_page():
             st.rerun()
 
     selected_date = st.session_state.calendar_date
-    desired_width_pixels = 100
-    css = f"""
-    <style>
-        .stDataFrame th[data-testid="stDataFrameColumnHeader"], .stDataFrame td {{
-            min-width: {desired_width_pixels}px !important;
-            max-width: {desired_width_pixels}px !important;
-        }}
-    </style>
-    """
-    st.markdown(css, unsafe_allow_html=True)
+    
+    # --- ★変更点：列幅を固定するCSSを削除 ---
+    # 以下のCSSブロックを完全に削除しました。
+    # desired_width_pixels = 100
+    # css = f"""..."""
+    # st.markdown(css, unsafe_allow_html=True)
 
     first_day = selected_date.replace(day=1)
     last_day = first_day.replace(day=py_calendar.monthrange(first_day.year, first_day.month)[1])
