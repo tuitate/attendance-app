@@ -540,7 +540,7 @@ def show_shift_management_page():
                 "color": color, "id": shift['id'], "allDay": False
             })
 
-       col1, col2 = st.columns([3, 2]) # 2列レイアウトに変更
+        col1, col2 = st.columns([3, 2]) # 2列レイアウトに変更
         with col1:
             st.subheader(st.session_state.calendar_date.strftime('%Y年 %m月'), anchor=False, divider='blue')
 
