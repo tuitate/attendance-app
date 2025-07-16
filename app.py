@@ -121,7 +121,6 @@ def render_dm_chat_window(recipient_id, recipient_name):
                 add_direct_message(current_user_id, recipient_id, message_input, file_base64, file_name, file_type)
                 st.rerun()
 
-
 def delete_broadcast_message(created_at_iso):
     conn = get_db_connection()
     try:
@@ -366,6 +365,7 @@ def show_login_register_page():
                         st.rerun()
                     else:
                         st.error("従業員IDまたはパスワードが正しくありません。")
+                        
     elif choice == "新規登録":
         with st.form("register_form"):
             st.markdown("パスワードは、大文字、小文字、数字を含む8文字以上で設定してください。")
@@ -693,13 +693,10 @@ def show_shift_table_page():
     styled_df = df.style.apply(highlight_user, name_to_highlight=current_user_display_name, subset=['従業員名'])
     st.dataframe(styled_df, use_container_width=True, hide_index=True)
 
-def show_direct_message_page():
-    """ダイレクトメッセージページの表示ロジック（画面切り替え・ピン留め機能削除版）"""
-    
+def show_direct_message_page():  
     selected_user_id = st.session_state.get('dm_selected_user_id')
 
     if selected_user_id:
-        # --- チャット相手が選択されている場合：専用チャット画面を表示 ---
         conn = get_db_connection()
         recipient_info = conn.execute("SELECT name FROM users WHERE id = ?", (selected_user_id,)).fetchone()
         conn.close()
@@ -715,18 +712,14 @@ def show_direct_message_page():
             st.rerun()
 
     else:
-        # --- チャット相手が選択されていない場合：宛先リストを表示 ---
         st.header("ダイレクトメッセージ")
         st.subheader("宛先リスト")
-
-        # レイアウト崩れ対策のCSSは不要になったため削除
 
         conn = get_db_connection()
         current_user_id = st.session_state.user_id
         all_users = conn.execute("SELECT id, name FROM users WHERE company = ? AND id != ?", 
                                  (st.session_state.user_company, current_user_id)).fetchall()
-        
-        # ピン留め関連のDBアクセスを削除
+
         unread_senders_rows = conn.execute("SELECT DISTINCT sender_id FROM messages WHERE user_id = ? AND is_read = 0 AND message_type = 'DIRECT'", (current_user_id,)).fetchall()
         unread_sender_ids = {row['sender_id'] for row in unread_senders_rows}
         
@@ -750,10 +743,8 @@ def show_direct_message_page():
                 "last_message_time": datetime.fromisoformat(last_message_times.get(user_id, "1970-01-01T00:00:00+00:00"))
             })
         
-        # ソートキーからピン留め情報を削除
         sorted_users = sorted(user_info_list, key=lambda u: (u['has_unread'], u['last_message_time']), reverse=True)
 
-        # 宛先リストの表示をシンプルなボタンに変更
         with st.container(height=600):
             for user in sorted_users:
                 label = user['name']
@@ -889,7 +880,6 @@ def confirm_delete_user_dialog(user_id, user_name):
             st.rerun()
 
 def show_employee_information_page():
-    """社長・役職者専用の従業員情報閲覧・削除ページ"""
     st.header("従業員情報")
     st.info("あなたの会社の全従業員の情報を表示しています。")
 
@@ -1238,7 +1228,6 @@ def display_work_summary():
                 st.session_state.last_clock_out_reminder_date = today_str
                 
 def main():
-    """メインのアプリケーションロジック（st.tabsによる最新ナビゲーション）"""
     st.set_page_config(layout="wide")
 
     init_db()
@@ -1247,7 +1236,6 @@ def main():
     if not st.session_state.get('logged_in'):
         show_login_register_page()
     else:
-        # --- 1. ページ情報の定義 ---
         conn = get_db_connection()
         current_user_id = st.session_state.user_id
         broadcast_unread_count = conn.execute("SELECT COUNT(*) FROM messages WHERE user_id = ? AND is_read = 0 AND message_type IN ('BROADCAST', 'SYSTEM')", (current_user_id,)).fetchone()[0]
@@ -1256,23 +1244,17 @@ def main():
         unread_dm_senders = conn.execute("SELECT DISTINCT u.id, u.name FROM messages m JOIN users u ON m.sender_id = u.id WHERE m.user_id = ? AND m.is_read = 0 AND m.message_type = 'DIRECT'", (current_user_id,)).fetchall()
         conn.close()
 
-        # --- 2. ページ上部のDM通知（これは残します） ---
         if unread_dm_senders:
             with st.container(border=True):
                 st.info("🔔 新着メッセージがあります！")
                 for sender in unread_dm_senders:
-                    # このボタンを押すと、自動的にDMタブが開きます
                     if st.button(f"📩 **{sender['name']}さん**から新しいメッセージが届いています。", key=f"dm_notification_{sender['id']}", use_container_width=True):
                         st.session_state.dm_selected_user_id = sender['id']
-                        # st.tabsはセッションステートで直接制御できないため、ここではセッションをセットするだけ
-                        # ユーザーは通知をクリックした後、手動でDMタブを開く必要があります
                         st.info("下の「DM」タブを開いてください。")
 
-        # --- 3. タブナビゲーションの作成 ---
         tab_titles = []
         tab_icons = []
-        
-        # 表示するページの順序を定義
+
         ordered_page_keys = ["タイムカード", "シフト管理", "シフト表", "出勤状況", "全体メッセージ", "ダイレクトメッセージ", "ユーザー情報"]
         if st.session_state.user_position in ["社長", "役職者"]:
             ordered_page_keys.insert(1, "従業員情報")
@@ -1290,13 +1272,11 @@ def main():
             if info:
                 label = page_key
                 if info.get('unread', 0) > 0:
-                    label += " 🔴" # 未読があればアイコンを追加
+                    label += " 🔴"
                 tab_titles.append(label)
-        
-        # st.tabsでタブを作成
+
         tabs = st.tabs(tab_titles)
-        
-        # 各タブにページの内容を割り当て
+
         page_function_map = {
             "タイムカード": show_timecard_page, "ユーザー登録": show_user_registration_page,
             "従業員情報": show_employee_information_page, "シフト管理": show_shift_management_page,
@@ -1307,13 +1287,11 @@ def main():
 
         for i, tab in enumerate(tabs):
             with tab:
-                # タブの名前に対応する関数を呼び出す
                 page_key_to_render = ordered_page_keys[i]
                 render_function = page_function_map.get(page_key_to_render)
                 if render_function:
                     render_function()
 
-        # --- 4. サイドバー（ログアウトボタンのみ） ---
         with st.sidebar:
             st.title(" ")
             st.info(f"**名前:** {st.session_state.user_name}\n\n**従業員ID:** {get_user_employee_id(st.session_state.user_id)}")
