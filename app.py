@@ -693,32 +693,13 @@ def show_shift_table_page():
     styled_df = df.style.apply(highlight_user, name_to_highlight=current_user_display_name, subset=['従業員名'])
     st.dataframe(styled_df, use_container_width=True, hide_index=True)
 
-def pin_user(user_id, user_to_pin_id):
-    conn = get_db_connection()
-    try:
-        conn.execute("INSERT OR IGNORE INTO pinned_users (user_id, pinned_user_id) VALUES (?, ?)",
-                     (user_id, user_to_pin_id))
-        conn.commit()
-    except sqlite3.Error as e:
-        print(f"Error pinning user: {e}")
-    finally:
-        conn.close()
-
-def unpin_user(user_id, user_to_unpin_id):
-    conn = get_db_connection()
-    try:
-        conn.execute("DELETE FROM pinned_users WHERE user_id = ? AND pinned_user_id = ?",
-                     (user_id, user_to_unpin_id))
-        conn.commit()
-    except sqlite3.Error as e:
-        print(f"Error unpinning user: {e}")
-    finally:
-        conn.close()
-
 def show_direct_message_page():
+    """ダイレクトメッセージページの表示ロジック（画面切り替え・ピン留め機能削除版）"""
+    
     selected_user_id = st.session_state.get('dm_selected_user_id')
 
     if selected_user_id:
+        # --- チャット相手が選択されている場合：専用チャット画面を表示 ---
         conn = get_db_connection()
         recipient_info = conn.execute("SELECT name FROM users WHERE id = ?", (selected_user_id,)).fetchone()
         conn.close()
@@ -734,37 +715,21 @@ def show_direct_message_page():
             st.rerun()
 
     else:
+        # --- チャット相手が選択されていない場合：宛先リストを表示 ---
         st.header("ダイレクトメッセージ")
         st.subheader("宛先リスト")
 
-        st.markdown("""
-        <style>
-            @media (max-width: 768px) {
-                /* dm-user-listクラス内の列レイアウトを強制的に横並びに保つ */
-                .dm-user-list [data-testid="stHorizontalBlock"] {
-                    flex-direction: row !important;
-                    flex-wrap: nowrap !important; /* 折り返しを禁止 */
-                }
-                /* 各列の幅を再設定して維持 */
-                .dm-user-list [data-testid="stHorizontalBlock"] > div:nth-child(1) {
-                    flex: 1 1 0% !important; /* ピンボタンの列 */
-                }
-                /* タイプミスを修正: .dm_user-list -> .dm-user-list */
-                .dm-user-list [data-testid="stHorizontalBlock"] > div:nth-child(2) {
-                    flex: 5 1 0% !important; /* 名前ボタンの列 */
-                }
-            }
-        </style>
-        """, unsafe_allow_html=True)
+        # レイアウト崩れ対策のCSSは不要になったため削除
 
         conn = get_db_connection()
         current_user_id = st.session_state.user_id
         all_users = conn.execute("SELECT id, name FROM users WHERE company = ? AND id != ?", 
                                  (st.session_state.user_company, current_user_id)).fetchall()
-        pinned_rows = conn.execute("SELECT pinned_user_id FROM pinned_users WHERE user_id = ?", (current_user_id,)).fetchall()
-        pinned_user_ids = {row['pinned_user_id'] for row in pinned_rows}
+        
+        # ピン留め関連のDBアクセスを削除
         unread_senders_rows = conn.execute("SELECT DISTINCT sender_id FROM messages WHERE user_id = ? AND is_read = 0 AND message_type = 'DIRECT'", (current_user_id,)).fetchall()
         unread_sender_ids = {row['sender_id'] for row in unread_senders_rows}
+        
         last_message_times_rows = conn.execute("""
             SELECT CASE WHEN sender_id = :uid THEN user_id ELSE sender_id END as partner, MAX(created_at) as last_time
             FROM messages WHERE (sender_id = :uid OR user_id = :uid) AND message_type = 'DIRECT' GROUP BY partner
@@ -781,36 +746,22 @@ def show_direct_message_page():
             user_id = user['id']
             user_info_list.append({
                 "id": user_id, "name": user['name'],
-                "is_pinned": user_id in pinned_user_ids,
                 "has_unread": user_id in unread_sender_ids,
                 "last_message_time": datetime.fromisoformat(last_message_times.get(user_id, "1970-01-01T00:00:00+00:00"))
             })
         
-        sorted_users = sorted(user_info_list, key=lambda u: (u['is_pinned'], u['has_unread'], u['last_message_time']), reverse=True)
+        # ソートキーからピン留め情報を削除
+        sorted_users = sorted(user_info_list, key=lambda u: (u['has_unread'], u['last_message_time']), reverse=True)
 
-        st.markdown('<div class="dm-user-list">', unsafe_allow_html=True)
+        # 宛先リストの表示をシンプルなボタンに変更
         with st.container(height=600):
             for user in sorted_users:
-                list_item_cols = st.columns([1, 5], gap="small")
-                
-                with list_item_cols[0]:
-                    if user['is_pinned']:
-                        if st.button("📌", key=f"unpin_{user['id']}", help="ピン留めを外す", use_container_width=True):
-                            unpin_user(current_user_id, user['id'])
-                            st.rerun()
-                    else:
-                        if st.button("📍", key=f"pin_{user['id']}", help="ピン留めする", use_container_width=True):
-                            pin_user(current_user_id, user['id'])
-                            st.rerun()
-                
-                with list_item_cols[1]:
-                    label = user['name']
-                    if user['has_unread']:
-                        label = f"🔴 {label}"
-                    if st.button(label, key=f"select_dm_{user['id']}", use_container_width=True):
-                        st.session_state.dm_selected_user_id = user['id']
-                        st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
+                label = user['name']
+                if user['has_unread']:
+                    label = f"🔴 {label}"
+                if st.button(label, key=f"select_dm_{user['id']}", use_container_width=True):
+                    st.session_state.dm_selected_user_id = user['id']
+                    st.rerun()
             
 def show_messages_page():
     st.header("全体メッセージ")
