@@ -1240,7 +1240,7 @@ def display_work_summary():
                 st.session_state.last_clock_out_reminder_date = today_str
                 
 def main():
-    """メインのアプリケーションロジック（トップナビゲーション＆スワイプ機能つき）"""
+    """メインのアプリケーションロジック（st.tabsによる最新ナビゲーション）"""
     st.set_page_config(layout="wide")
 
     init_db()
@@ -1253,129 +1253,76 @@ def main():
         conn = get_db_connection()
         current_user_id = st.session_state.user_id
         broadcast_unread_count = conn.execute("SELECT COUNT(*) FROM messages WHERE user_id = ? AND is_read = 0 AND message_type IN ('BROADCAST', 'SYSTEM')", (current_user_id,)).fetchone()[0]
-        dm_unread_count = conn.execute("SELECT COUNT(*) FROM messages WHERE user_id = ? AND is_read = 0 AND message_type = 'DIRECT'", (current_user_id,)).fetchone()[0]
+        dm_unread_count = conn.execute("SELECT COUNT(*) FROM messages WHERE user_id = ? AND is_read = 0 AND message_type = 'DIRECT'", (current_user_id,)).fetchone()
+        
+        unread_dm_senders = conn.execute("SELECT DISTINCT u.id, u.name FROM messages m JOIN users u ON m.sender_id = u.id WHERE m.user_id = ? AND m.is_read = 0 AND m.message_type = 'DIRECT'", (current_user_id,)).fetchall()
         conn.close()
 
-        # 全てのページを辞書で管理
-        page_definitions = {
-            "タイムカード": {"label": "タイムカード"},
-            "シフト管理": {"label": "シフト管理"},
-            "シフト表": {"label": "シフト表"},
-            "出勤状況": {"label": "出勤状況"},
-            "全体メッセージ": {"label": "全体メッセージ", "unread": broadcast_unread_count},
-            "ダイレクトメッセージ": {"label": "DM", "unread": dm_unread_count},
-            "ユーザー情報": {"label": "ユーザー情報"}
-        }
+        # --- 2. ページ上部のDM通知（これは残します） ---
+        if unread_dm_senders:
+            with st.container(border=True):
+                st.info("🔔 新着メッセージがあります！")
+                for sender in unread_dm_senders:
+                    # このボタンを押すと、自動的にDMタブが開きます
+                    if st.button(f"📩 **{sender['name']}さん**から新しいメッセージが届いています。", key=f"dm_notification_{sender['id']}", use_container_width=True):
+                        st.session_state.dm_selected_user_id = sender['id']
+                        # st.tabsはセッションステートで直接制御できないため、ここではセッションをセットするだけ
+                        # ユーザーは通知をクリックした後、手動でDMタブを開く必要があります
+                        st.info("下の「DM」タブを開いてください。")
+
+        # --- 3. タブナビゲーションの作成 ---
+        tab_titles = []
+        tab_icons = []
         
-        # 役職に応じてページを追加
-        admin_pages = {}
-        if st.session_state.user_position in ["社長", "役職者"]:
-            admin_pages["従業員情報"] = {"label": "従業員情報"}
-            admin_pages["ユーザー登録"] = {"label": "ユーザー登録"}
-        
-        # 表示するページの順序をリストで定義
+        # 表示するページの順序を定義
         ordered_page_keys = ["タイムカード", "シフト管理", "シフト表", "出勤状況", "全体メッセージ", "ダイレクトメッセージ", "ユーザー情報"]
         if st.session_state.user_position in ["社長", "役職者"]:
             ordered_page_keys.insert(1, "従業員情報")
             ordered_page_keys.insert(1, "ユーザー登録")
 
-        # --- 2. スワイプナビゲーション機能 ---
-        swipe_js = """
-        <script>
-            let touchstartX = 0, touchendX = 0, touchstartY = 0, touchendY = 0;
-            const gestureZone = document.body;
-            gestureZone.addEventListener('touchstart', e => {
-                touchstartX = e.changedTouches[0].screenX;
-                touchstartY = e.changedTouches[0].screenY;
-            }, {passive: true});
-            gestureZone.addEventListener('touchend', e => {
-                touchendX = e.changedTouches[0].screenX;
-                touchendY = e.changedTouches[0].screenY;
-                handleGesture();
-            }, {passive: true});
-            function handleGesture() {
-                const deltaX = touchendX - touchstartX;
-                const deltaY = touchendY - touchstartY;
-                if (Math.abs(deltaX) > Math.abs(deltaY) + 30 && Math.abs(deltaX) > 50) {
-                    window.location.search = `?swipe=${(touchendX < touchstartX ? 'left' : 'right')}&v=${Date.now()}`;
-                }
-            }
-        </script>
-        """
-        st.markdown(swipe_js, unsafe_allow_html=True)
+        page_definitions = {
+            "タイムカード": {"icon": "⏰"}, "シフト管理": {"icon": "🗓️"}, "シフト表": {"icon": "📊"},
+            "出勤状況": {"icon": "📈"}, "全体メッセージ": {"icon": "📢", "unread": broadcast_unread_count},
+            "ダイレクトメッセージ": {"icon": "💬", "unread": dm_unread_count[0] if dm_unread_count else 0}, "ユーザー情報": {"icon": "👤"},
+            "従業員情報": {"icon": "👥"}, "ユーザー登録": {"icon": "📝"}
+        }
 
-        query_params = st.query_params
-        if "swipe" in query_params:
-            direction = query_params.get("swipe")
-            try:
-                current_index = ordered_page_keys.index(st.session_state.page)
-            except (ValueError, AttributeError):
-                current_index = 0
-            
-            if direction == "left":
-                new_index = (current_index + 1) % len(ordered_page_keys)
-            else:
-                new_index = (current_index - 1 + len(ordered_page_keys)) % len(ordered_page_keys)
-            
-            st.session_state.page = ordered_page_keys[new_index]
-            st.experimental_set_query_params()
-            st.rerun()
+        for page_key in ordered_page_keys:
+            info = page_definitions.get(page_key)
+            if info:
+                label = page_key
+                if info.get('unread', 0) > 0:
+                    label += " 🔴" # 未読があればアイコンを追加
+                tab_titles.append(label)
+        
+        # st.tabsでタブを作成
+        tabs = st.tabs(tab_titles)
+        
+        # 各タブにページの内容を割り当て
+        page_function_map = {
+            "タイムカード": show_timecard_page, "ユーザー登録": show_user_registration_page,
+            "従業員情報": show_employee_information_page, "シフト管理": show_shift_management_page,
+            "シフト表": show_shift_table_page, "出勤状況": show_work_status_page,
+            "全体メッセージ": show_messages_page, "ダイレクトメッセージ": show_direct_message_page,
+            "ユーザー情報": show_user_info_page
+        }
 
-        # --- 3. トップナビゲーションバーの表示 ---
-        current_page_key = st.session_state.get('page', "タイムカード")
-        cols = st.columns(len(ordered_page_keys))
-        for i, page_key in enumerate(ordered_page_keys):
-            with cols[i]:
-                page_info = page_definitions.get(page_key) or admin_pages.get(page_key)
-                label = page_info['label']
-                if page_info.get('unread', 0) > 0:
-                    label += " 🔴"
-                
-                button_type = "primary" if page_key == current_page_key else "secondary"
-                if st.button(label, key=f"nav_{page_key}", use_container_width=True, type=button_type):
-                    st.session_state.page = page_key
-                    if page_key != "ダイレクトメッセージ":
-                        st.session_state.dm_selected_user_id = None
-                    st.rerun()
+        for i, tab in enumerate(tabs):
+            with tab:
+                # タブの名前に対応する関数を呼び出す
+                page_key_to_render = ordered_page_keys[i]
+                render_function = page_function_map.get(page_key_to_render)
+                if render_function:
+                    render_function()
 
-        st.divider()
-
-        # --- 4. サイドバーの表示（ログアウトボタンのみ） ---
+        # --- 4. サイドバー（ログアウトボタンのみ） ---
         with st.sidebar:
-            st.title(" ") # スペースで高さを調整
+            st.title(" ")
             st.info(f"**名前:** {st.session_state.user_name}\n\n**従業員ID:** {get_user_employee_id(st.session_state.user_id)}")
             if st.button("ログアウト", use_container_width=True):
                 for key in st.session_state.keys():
                     del st.session_state[key]
                 st.rerun()
-
-        # --- 5. ページ上部のDM通知 ---
-        conn = get_db_connection()
-        unread_dm_senders = conn.execute("SELECT DISTINCT u.id, u.name FROM messages m JOIN users u ON m.sender_id = u.id WHERE m.user_id = ? AND m.is_read = 0 AND m.message_type = 'DIRECT'", (current_user_id,)).fetchall()
-        conn.close()
-        if unread_dm_senders:
-            with st.container(border=True):
-                st.info("🔔 新着メッセージがあります！")
-                for sender in unread_dm_senders:
-                    if st.button(f"📩 **{sender['name']}さん**から新しいメッセージが届いています。", key=f"dm_notification_{sender['id']}", use_container_width=True):
-                        st.session_state.page = "ダイレクトメッセージ"
-                        st.session_state.dm_selected_user_id = sender['id']
-                        st.rerun()
-            st.divider()
-
-        # --- 6. 選択されたページの表示 ---
-        page_functions = {
-            "タイムカード": show_timecard_page, "従業員情報": show_employee_information_page,
-            "ユーザー登録": show_user_registration_page, "シフト管理": show_shift_management_page,
-            "シフト表": show_shift_table_page, "出勤状況": show_work_status_page,
-            "全体メッセージ": show_messages_page, "ダイレクトメッセージ": show_direct_message_page,
-            "ユーザー情報": show_user_info_page,
-        }
-        render_function = page_functions.get(current_page_key)
-        if render_function:
-            render_function()
-        else:
-            show_timecard_page()
 
 if __name__ == "__main__":
     main()
