@@ -603,7 +603,7 @@ def show_shift_table_page():
             /* 文字列が改行されるのを防ぐ */
             white-space: nowrap;
             /* !important を付けて、他のスタイルに上書きされないよう最優先にする */
-            min-width: 120px !important;
+            min-width: 10px !important;
         }
     </style>
     """
