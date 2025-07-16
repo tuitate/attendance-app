@@ -166,6 +166,7 @@ def init_session_state():
         'confirming_delete_user_id': None,
         'dm_selected_user_id': None,
         'editing_date': None,
+        'show_broadcast_dialog': False,
     }
     for key, default_value in defaults.items():
         if key not in st.session_state:
@@ -277,6 +278,7 @@ def broadcast_message_dialog():
                 add_broadcast_message(st.session_state.user_id, message_body, st.session_state.user_company, file_base64, file_name, file_type)
 
                 st.toast("メッセージを送信しました！", icon="✅")
+                st.session_state.show_broadcast_dialog = False
                 st.rerun()
             else:
                 st.warning("メッセージ内容を入力するか、ファイルを添付してください。")
@@ -762,11 +764,19 @@ def show_messages_page():
     with col1:
         st.header("全体メッセージ")
     with col2:
+        # ★★★ 修正点: ボタンが押されたらセッションの状態をTrueにする ★★★
         if st.button("📝 全社へメッセージを送信する", use_container_width=True, type="primary"):
-            broadcast_message_dialog()
+            st.session_state.show_broadcast_dialog = True
+            st.rerun()
+
+    # ★★★ 修正点: セッションの状態がTrueの場合のみダイアログを呼び出す ★★★
+    if st.session_state.get('show_broadcast_dialog'):
+        broadcast_message_dialog()
+
     st.divider()
 
     conn = get_db_connection()
+    
     messages = conn.execute("""
         SELECT id, content, created_at, file_base64, file_name, file_type, sender_id FROM messages
         WHERE user_id = ? AND message_type IN ('BROADCAST', 'SYSTEM')
