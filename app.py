@@ -1240,7 +1240,8 @@ def main():
         conn = get_db_connection()
         current_user_id = st.session_state.user_id
         broadcast_unread_count = conn.execute("SELECT COUNT(*) FROM messages WHERE user_id = ? AND is_read = 0 AND message_type IN ('BROADCAST', 'SYSTEM')", (current_user_id,)).fetchone()[0]
-        dm_unread_count = conn.execute("SELECT COUNT(*) FROM messages WHERE user_id = ? AND is_read = 0 AND message_type = 'DIRECT'", (current_user_id,)).fetchone()[0]
+        dm_unread_count_row = conn.execute("SELECT COUNT(*) FROM messages WHERE user_id = ? AND is_read = 0 AND message_type = 'DIRECT'", (current_user_id,)).fetchone()
+        dm_unread_count = dm_unread_count_row[0] if dm_unread_count_row else 0
         unread_dm_senders = conn.execute("SELECT DISTINCT u.id, u.name FROM messages m JOIN users u ON m.sender_id = u.id WHERE m.user_id = ? AND m.is_read = 0 AND m.message_type = 'DIRECT'", (current_user_id,)).fetchall()
         conn.close()
 
@@ -1251,19 +1252,16 @@ def main():
                 for sender in unread_dm_senders:
                     if st.button(f"📩 **{sender['name']}さん**から新しいメッセージが届いています。", key=f"dm_notification_{sender['id']}", use_container_width=True):
                         st.session_state.dm_selected_user_id = sender['id']
-                        # DMタブが自動で開かれるようにページ状態を更新
-                        st.session_state.page = "ダイレクトメッセージ" 
-                        st.rerun()
+                        st.info("下の「DM」タブを開いてください。")
 
-        # --- ★★★ ここからタブ管理のロジックを修正 ★★★ ---
+        # --- ★★★ シンプルなタブ管理ロジックに戻します ★★★ ---
         
-        # 表示するページの順番を定義
+        # 表示するページの順番と情報を定義
         ordered_page_keys = ["タイムカード", "シフト管理", "シフト表", "出勤状況", "全体メッセージ", "ダイレクトメッセージ", "ユーザー情報"]
         if st.session_state.user_position in ["社長", "役職者"]:
             ordered_page_keys.insert(1, "従業員情報")
             ordered_page_keys.insert(1, "ユーザー登録")
 
-        # 各ページの情報を定義
         page_definitions = {
             "タイムカード": {"icon": "⏰", "func": show_timecard_page},
             "シフト管理": {"icon": "🗓️", "func": show_shift_management_page},
@@ -1281,38 +1279,20 @@ def main():
         for key in ordered_page_keys:
             info = page_definitions.get(key)
             if info:
-                label = key
+                label = f"{info['icon']} {key}"
                 if info.get('unread', 0) > 0:
                     label += " 🔴"
                 tab_titles.append(label)
 
-        # 現在選択されているタブのインデックスを決定
-        try:
-            current_page_index = ordered_page_keys.index(st.session_state.get('page', 'タイムカード'))
-        except ValueError:
-            current_page_index = 0 # もしページが見つからなければ先頭のタブにする
+        # st.tabsを描画
+        tabs = st.tabs(tab_titles)
 
-        # st.tabsを描画し、選択されたタブのインデックスを取得
-        selected_tab_index = st.tabs(tab_titles).index(st.session_state.get('page', 'タイムカード'))
-
-
-        # 選択されたタブのページ名を取得
-        selected_page = ordered_page_keys[selected_tab_index]
-
-        # ページが切り替わったかチェック
-        if st.session_state.get('page') != selected_page:
-            # DMページ以外に切り替わったら、選択中のDM相手をリセット
-            if selected_page != "ダイレクトメッセージ":
-                st.session_state.dm_selected_user_id = None
-            # 現在のページを更新
-            st.session_state.page = selected_page
-            st.rerun()
-
-        # 選択されたページに対応する関数を実行
-        render_function = page_definitions[selected_page]["func"]
-        render_function()
-
-        # --- ★★★ ここまでタブ管理のロジックを修正 ★★★ ---
+        # 各タブの中身を描画
+        for i, tab in enumerate(tabs):
+            with tab:
+                page_key_to_render = ordered_page_keys[i]
+                render_function = page_definitions[page_key_to_render]["func"]
+                render_function()
 
         with st.sidebar:
             st.title(" ")
