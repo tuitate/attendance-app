@@ -739,11 +739,17 @@ def show_direct_message_page():
 
         st.markdown("""
         <style>
-            /* 画面幅が640px以下のとき（スマホなど）に適用 */
-            @media (max-width: 640px) {
-                /* dm-user-listクラス内の列レイアウトを強制的に横並びに保つ */
+            @media (max-width: 768px) {
                 .dm-user-list [data-testid="stHorizontalBlock"] {
                     flex-direction: row !important;
+                    flex-wrap: nowrap !important;
+                }
+
+                .dm-user-list [data-testid="stHorizontalBlock"] > div:nth-child(1) {
+                    flex: 1 1 0% !important;
+                }
+                .dm_user-list [data-testid="stHorizontalBlock"] > div:nth-child(2) {
+                    flex: 5 1 0% !important;
                 }
             }
         </style>
@@ -988,7 +994,6 @@ def show_employee_information_page():
         conn.close()
         
 def show_user_registration_page():
-    """管理者（社長・役職者）が新しいユーザーを登録するためのページ"""
     st.header("ユーザー登録")
     st.info("あなたの会社に新しいユーザーを登録します。")
 
