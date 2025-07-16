@@ -605,8 +605,7 @@ def show_shift_table_page():
             st.session_state.calendar_date += relativedelta(months=1)
             st.rerun()
 
-    # --- ★★★ ここから修正 ★★★ ---
-    # この数値を大きくすると、全ての列の幅が広がります
+    # この数値を変更すると、全ての列の幅が変わります
     desired_width_pixels = 120 
     css = f"""
     <style>
@@ -620,7 +619,6 @@ def show_shift_table_page():
     </style>
     """
     st.markdown(css, unsafe_allow_html=True)
-    # --- ★★★ ここまで修正 ★★★ ---
 
     first_day = st.session_state.calendar_date.replace(day=1)
     last_day = first_day.replace(day=py_calendar.monthrange(first_day.year, first_day.month)[1])
@@ -686,16 +684,10 @@ def show_shift_table_page():
 
     styled_df = df.style.apply(highlight_user, name_to_highlight=current_user_display_name, subset=['従業員名'])
     
+    # --- ★★★ 修正点 ★★★ ---
     st.dataframe(
         styled_df,
-        use_container_width=True,
-        hide_index=True
-    )
-    styled_df = df.style.apply(highlight_user, name_to_highlight=current_user_display_name, subset=['従業員名'])
-    
-    st.dataframe(
-        styled_df,
-        use_container_width=True,
+        # use_container_width=True,  <-- この行を削除またはコメントアウト
         hide_index=True
     )
     
