@@ -1240,6 +1240,7 @@ def display_work_summary():
                 st.session_state.last_clock_out_reminder_date = today_str
                 
 def main():
+    """メインのアプリケーションロジック"""
     st.set_page_config(layout="wide")
 
     init_db()
@@ -1248,43 +1249,107 @@ def main():
     if not st.session_state.get('logged_in'):
         show_login_register_page()
     else:
-        st.sidebar.title("メニュー")
-        st.sidebar.markdown(f"**名前:** {st.session_state.user_name}")
-        st.sidebar.markdown(f"**従業員ID:** {get_user_employee_id(st.session_state.user_id)}")
+        # --- スワイプナビゲーション機能 ---
+        # 1. スワイプを検知するためのJavaScriptをページに埋め込む
+        swipe_js = """
+        <script>
+            let touchstartX = 0;
+            let touchendX = 0;
+            let touchstartY = 0;
+            let touchendY = 0;
+            let swiped = false;
+            const gestureZone = document.body;
+
+            gestureZone.addEventListener('touchstart', function(event) {
+                touchstartX = event.changedTouches[0].screenX;
+                touchstartY = event.changedTouches[0].screenY;
+                swiped = false;
+            }, {passive: true});
+
+            gestureZone.addEventListener('touchend', function(event) {
+                if (swiped) return;
+                touchendX = event.changedTouches[0].screenX;
+                touchendY = event.changedTouches[0].screenY;
+                handleGesture();
+            }, {passive: true});
+
+            function handleGesture() {
+                const deltaX = touchendX - touchstartX;
+                const deltaY = touchendY - touchstartY;
+
+                // 縦スクロールではなく、明確な横スワイプのみを検知
+                if (Math.abs(deltaX) > Math.abs(deltaY) + 30) {
+                    if (Math.abs(deltaX) > 50) { // 50px以上のスワイプを検知
+                        swiped = true;
+                        if (touchendX < touchstartX) {
+                            // 左スワイプ -> 次のページへ
+                            window.location.search = `?swipe=left&v=${Date.now()}`;
+                        } else {
+                            // 右スワイプ -> 前のページへ
+                            window.location.search = `?swipe=right&v=${Date.now()}`;
+                        }
+                    }
+                }
+            }
+        </script>
+        """
+        st.markdown(swipe_js, unsafe_allow_html=True)
+
+        # 2. ページオプションのリストを作成 (既存のロジック)
         conn = get_db_connection()
         current_user_id = st.session_state.user_id
-
         broadcast_unread_count = conn.execute("SELECT COUNT(*) FROM messages WHERE user_id = ? AND is_read = 0 AND message_type IN ('BROADCAST', 'SYSTEM')", (current_user_id,)).fetchone()[0]
-
-        unread_dm_senders = conn.execute("""
-            SELECT DISTINCT u.id, u.name
-            FROM messages m JOIN users u ON m.sender_id = u.id
-            WHERE m.user_id = ? AND m.is_read = 0 AND m.message_type = 'DIRECT'
-        """, (current_user_id,)).fetchall()
+        dm_unread_count = conn.execute("SELECT COUNT(*) FROM messages WHERE user_id = ? AND is_read = 0 AND message_type = 'DIRECT'", (current_user_id,)).fetchone()[0]
         conn.close()
 
         broadcast_message_label = "全体メッセージ"
         if broadcast_unread_count > 0:
             broadcast_message_label = f"全体メッセージ 🔴 ({broadcast_unread_count})"
-
         dm_label = "ダイレクトメッセージ"
-        if unread_dm_senders:
+        if dm_unread_count > 0:
             dm_label = "ダイレクトメッセージ 🔴"
 
         page_options = ["タイムカード", "シフト管理", "シフト表", "出勤状況", broadcast_message_label, dm_label, "ユーザー情報"]
-        
         if st.session_state.user_position in ["社長", "役職者"]:
             page_options.insert(1, "従業員情報")
             page_options.insert(1, "ユーザー登録")
 
+        # 3. スワイプ操作を処理
+        query_params = st.query_params
+        if "swipe" in query_params:
+            direction = query_params.get("swipe")
+            try:
+                current_page_name = st.session_state.page.split(" 🔴")[0]
+                base_page_options = [opt.split(" 🔴")[0] for opt in page_options]
+                current_index = base_page_options.index(current_page_name)
+            except (ValueError, AttributeError):
+                current_index = 0
+
+            if direction == "left":
+                new_index = (current_index + 1) % len(page_options)
+            else: # direction == "right"
+                new_index = (current_index - 1 + len(page_options)) % len(page_options)
+            
+            st.session_state.page = page_options[new_index]
+            
+            # URLからクエリパラメータを削除して再実行
+            st.experimental_set_query_params()
+
+        # --- スワイプ機能ここまで ---
+
+        # サイドバーの表示（デスクトップ用）
+        st.sidebar.title("メニュー")
+        st.sidebar.markdown(f"**名前:** {st.session_state.user_name}")
+        st.sidebar.markdown(f"**従業員ID:** {get_user_employee_id(st.session_state.user_id)}")
+        
         try:
             current_page_name = st.session_state.page.split(" 🔴")[0]
             base_page_options = [opt.split(" 🔴")[0] for opt in page_options]
             current_page_index = base_page_options.index(current_page_name)
         except (ValueError, AttributeError):
             current_page_index = 0
-
-        page = st.sidebar.radio("ページを選択", page_options, index=current_page_index)
+        
+        page = st.sidebar.radio("ページを選択", page_options, index=current_page_index, key="sidebar_nav")
 
         if st.session_state.page != page:
             st.session_state.page = page
@@ -1297,35 +1362,39 @@ def main():
                 del st.session_state[key]
             st.rerun()
 
+        # ページ上部のDM通知
+        conn = get_db_connection()
+        unread_dm_senders = conn.execute("SELECT DISTINCT u.id, u.name FROM messages m JOIN users u ON m.sender_id = u.id WHERE m.user_id = ? AND m.is_read = 0 AND m.message_type = 'DIRECT'", (current_user_id,)).fetchall()
+        conn.close()
         if unread_dm_senders:
             with st.container(border=True):
                 st.info("🔔 新着メッセージがあります！")
                 for sender in unread_dm_senders:
                     if st.button(f"📩 **{sender['name']}さん**から新しいメッセージが届いています。", key=f"dm_notification_{sender['id']}", use_container_width=True):
-                        st.session_state.page = "ダイレクトメッセージ"
+                        st.session_state.page = dm_label
                         st.session_state.dm_selected_user_id = sender['id']
                         st.rerun()
             st.divider()
 
+        # 選択されたページの表示
         page_to_show = st.session_state.get('page', "タイムカード")
-
-        if page_to_show == "タイムカード":
+        if page_to_show.startswith("タイムカード"):
             show_timecard_page()
-        elif page_to_show == "従業員情報":
+        elif page_to_show.startswith("従業員情報"):
             show_employee_information_page()
-        elif page_to_show == "ユーザー登録":
+        elif page_to_show.startswith("ユーザー登録"):
             show_user_registration_page()
-        elif page_to_show == "シフト管理":
+        elif page_to_show.startswith("シフト管理"):
             show_shift_management_page()
-        elif page_to_show == "シフト表":
+        elif page_to_show.startswith("シフト表"):
             show_shift_table_page()
-        elif page_to_show == "出勤状況":
+        elif page_to_show.startswith("出勤状況"):
             show_work_status_page()
         elif page_to_show.startswith("全体メッセージ"):
             show_messages_page()
         elif page_to_show.startswith("ダイレクトメッセージ"):
             show_direct_message_page()
-        elif page_to_show == "ユーザー情報":
+        elif page_to_show.startswith("ユーザー情報"):
             show_user_info_page()
 
 if __name__ == "__main__":
