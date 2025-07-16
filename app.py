@@ -595,13 +595,16 @@ def show_shift_table_page():
             st.rerun()
 
     selected_date = st.session_state.calendar_date
-    desired_width_pixels = 300
-    css = f"""
+    desired_width_pixels = 100
+    css = """
     <style>
-        .stDataFrame th[data-testid="stDataFrameColumnHeader"], .stDataFrame td {{
-            min-width: {desired_width_pixels}px !important;
-            max-width: {desired_width_pixels}px !important;
-        }}
+        /* データフレームのデータセルを対象 */
+        .stDataFrame td {
+            /* 文字列が改行されるのを防ぐ (例: "02:00" と "～"で分かれないようにする) */
+            white-space: nowrap;
+            /* 最低でも90ピクセルの幅を確保する */
+            min-width: 90px;
+        }
     </style>
     """
     st.markdown(css, unsafe_allow_html=True)
