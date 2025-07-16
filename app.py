@@ -595,13 +595,6 @@ def show_shift_table_page():
             st.rerun()
 
     selected_date = st.session_state.calendar_date
-    
-    # --- ★変更点：列幅を固定するCSSを削除 ---
-    # 以下のCSSブロックを完全に削除しました。
-    # desired_width_pixels = 100
-    # css = f"""..."""
-    # st.markdown(css, unsafe_allow_html=True)
-
     first_day = selected_date.replace(day=1)
     last_day = first_day.replace(day=py_calendar.monthrange(first_day.year, first_day.month)[1])
 
@@ -635,17 +628,10 @@ def show_shift_table_page():
     shifts = pd.read_sql_query(shifts_query, conn, params=params)
     conn.close()
 
-    position_icons = {
-        "社長": "👑", "役職者": "🥈", "社員": "🥉", "バイト": "👦🏿"
-    }
-
+    position_icons = { "社長": "👑", "役職者": "🥈", "社員": "🥉", "バイト": "👦🏿" }
     current_user_icon = position_icons.get(st.session_state.user_position, '')
     current_user_display_name = f"{current_user_icon} {st.session_state.user_name}"
-
-    users['display_name'] = users.apply(
-        lambda row: f"{position_icons.get(row['position'], '')} {row['name']}",
-        axis=1
-    )
+    users['display_name'] = users.apply(lambda row: f"{position_icons.get(row['position'], '')} {row['name']}", axis=1)
 
     df = pd.DataFrame()
     df['従業員名'] = users['display_name']
@@ -673,6 +659,36 @@ def show_shift_table_page():
 
     df.reset_index(drop=True, inplace=True)
     df.fillna('', inplace=True)
+
+    def highlight_user(column, name_to_highlight):
+        styles = [''] * len(column)
+        try:
+            idx_pos = column[column == name_to_highlight].index[0]
+            styles[idx_pos] = 'background-color: rgba(230, 243, 255, 0.6)'
+        except IndexError:
+            pass
+        return styles
+
+    styled_df = df.style.apply(highlight_user, name_to_highlight=current_user_display_name, subset=['従業員名'])
+
+    # --- ★変更点：column_config を使って列の幅を定義 ---
+    column_config = {
+        "従業員名": st.column_config.TextColumn("従業員名", width="medium")
+    }
+    # 日付列のコンフィグを動的に生成
+    for col in df.columns:
+        if col != "従業員名":
+            # "small" を指定して、内容が表示される最低限の幅を確保しつつ、
+            # スマホでも見やすいように設定
+            column_config[col] = st.column_config.TextColumn(col, width="small")
+
+    # --- ★変更点：st.dataframe に column_config を渡す ---
+    st.dataframe(
+        styled_df,
+        use_container_width=True,
+        hide_index=True,
+        column_config=column_config
+    )
 
     def highlight_user(column, name_to_highlight):
         styles = [''] * len(column)
