@@ -262,7 +262,16 @@ def broadcast_message_dialog():
         message_content = st.text_area("メッセージ内容を入力してください。", height=150)
         uploaded_file = st.file_uploader("ファイルを添付 (任意)", type=None)
 
-        submitted = st.form_submit_button("この内容で送信する")
+        # --- ★★★ ここから修正 ★★★ ---
+        # ボタンを横並びにするために列を作成
+        col1, col2, _ = st.columns([1, 1, 2])
+        with col1:
+            submitted = st.form_submit_button("この内容で送信する", type="primary")
+        with col2:
+            # キャンセルボタンを追加
+            cancelled = st.form_submit_button("キャンセル")
+        # --- ★★★ ここまで修正 ★★★ ---
+
         if submitted:
             if message_content or uploaded_file:
                 sender_name = st.session_state.user_name
@@ -278,10 +287,16 @@ def broadcast_message_dialog():
                 add_broadcast_message(st.session_state.user_id, message_body, st.session_state.user_company, file_base64, file_name, file_type)
 
                 st.toast("メッセージを送信しました！", icon="✅")
+                
                 st.session_state.show_broadcast_dialog = False
                 st.rerun()
             else:
                 st.warning("メッセージ内容を入力するか、ファイルを添付してください。")
+        
+        # キャンセルボタンが押された場合もダイアログを閉じる
+        if cancelled:
+            st.session_state.show_broadcast_dialog = False
+            st.rerun()
 
 @st.dialog("シフト登録・編集")
 def shift_edit_dialog(target_date):
