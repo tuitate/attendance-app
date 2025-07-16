@@ -771,9 +771,8 @@ def show_messages_page():
 if st.session_state.get('show_broadcast_dialog'):
         st.session_state.show_broadcast_dialog = False
         broadcast_message_dialog()
-
-    st.divider()
-
+    
+st.divider()
     conn = get_db_connection()
     
     messages = conn.execute("""
