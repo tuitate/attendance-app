@@ -540,18 +540,21 @@ def show_shift_management_page():
                 "color": color, "id": shift['id'], "allDay": False
             })
 
-        # 月のナビゲーション
-        col1, col2, col3 = st.columns([1, 6, 1])
+       col1, col2 = st.columns([3, 2]) # 2列レイアウトに変更
         with col1:
-            if st.button("先月"):
-                st.session_state.calendar_date -= relativedelta(months=1)
-                st.rerun()
-        with col2:
             st.subheader(st.session_state.calendar_date.strftime('%Y年 %m月'), anchor=False, divider='blue')
-        with col3:
-            if st.button("来月"):
-                st.session_state.calendar_date += relativedelta(months=1)
-                st.rerun()
+
+        with col2:
+            # ボタンをグループ化するための列
+            btn_col1, btn_col2 = st.columns(2)
+            with btn_col1:
+                if st.button("先月", use_container_width=True):
+                    st.session_state.calendar_date -= relativedelta(months=1)
+                    st.rerun()
+            with btn_col2:
+                if st.button("来月", use_container_width=True):
+                    st.session_state.calendar_date += relativedelta(months=1)
+                    st.rerun()
 
         # カレンダーコンポーネント
         calendar_result = calendar(
