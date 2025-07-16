@@ -699,8 +699,6 @@ def show_shift_table_page():
             pass
         return styles
 
-    styled_df = df.style.apply(highlight_user, name_to_highlight=current_user_display_name, subset=['従業員名'])
-
 def show_direct_message_page():  
     selected_user_id = st.session_state.get('dm_selected_user_id')
     styled_df = df.style.apply(highlight_user, name_to_highlight=current_user_display_name, subset=['従業員名'])
