@@ -1255,7 +1255,7 @@ def main():
         # 未読数を取得
         broadcast_unread_count = conn.execute("SELECT COUNT(*) FROM messages WHERE user_id = ? AND is_read = 0 AND message_type IN ('BROADCAST', 'SYSTEM')", (current_user_id,)).fetchone()[0]
         dm_unread_count = conn.execute("SELECT COUNT(*) FROM messages WHERE user_id = ? AND is_read = 0 AND message_type = 'DIRECT'", (current_user_id,)).fetchone()[0]
-        unread_dm_senders = conn.execute("SELECT DISTINCT u.id, u.name FROM messages m JOIN users u ON m.sender_id = u.id WHERE m.user_id = ? AND m.is_read = 0 AND m.message_type = 'DIRECT'", (current_user_id,)).fetchall()
+        unread_dm_senders = conn.execute("SELECT DISTINCT u.id, u.name FROM messages m JOIN users u ON m.sender_id = u.id WHERE m.user_id = ? AND m.is_read = 0 AND message_type = 'DIRECT'", (current_user_id,)).fetchall()
         conn.close()
 
         # 全てのページをアイコンと共に辞書で管理
@@ -1276,16 +1276,14 @@ def main():
         query_params = st.query_params
         navigated = False
         
-        # セッションにページがなければ初期化
         if 'page' not in st.session_state:
             st.session_state.page = "タイムカード"
 
         current_index = ordered_page_keys.index(st.session_state.page)
 
-        # URLパラメータによるナビゲーションを処理
         if "page" in query_params:
             page_key = query_params.get("page")
-            if page_key in ordered_page_keys:
+            if page_key in ordered_page_keys and st.session_state.page != page_key:
                 st.session_state.page = page_key
                 navigated = True
         elif "swipe" in query_params:
@@ -1298,7 +1296,6 @@ def main():
             navigated = True
         
         if navigated:
-            # DMページ以外に移動したら、選択中のDM相手をリセット
             if not st.session_state.page.startswith("ダイレクトメッセージ"):
                 st.session_state.dm_selected_user_id = None
             st.experimental_set_query_params()
@@ -1330,72 +1327,77 @@ def main():
         else:
             show_timecard_page()
 
-        # --- 5. ボトムナビゲーションバーとスワイプ機能の描画 ---
+        # --- 5. ボトムナビゲーションバーとスワイプ機能の描画 (修正箇所) ---
         nav_items_html = ""
         for page_key in ordered_page_keys:
             info = page_definitions.get(page_key)
-            is_active = "active" if page_key == page_to_show else ""
-            has_unread = "unread" if info.get('unread') else ""
-            nav_items_html += f"""
-                <a href="?page={page_key}" class="nav-item {is_active}">
-                    <div class="nav-icon">{info['icon']}</div>
-                    <div class="nav-label">{page_key}</div>
-                    {'<div class="unread-dot"></div>' if has_unread else ''}
-                </a>
-            """
+            if info: # 安全のためチェック
+                is_active = "active" if page_key == page_to_show else ""
+                has_unread = "unread" if info.get('unread') else ""
+                nav_items_html += f"""
+                    <a href="?page={page_key}" class="nav-item {is_active}">
+                        <div class="nav-icon">{info.get('icon', '❓')}</div>
+                        <div class="nav-label">{page_key}</div>
+                        {'<div class="unread-dot"></div>' if has_unread else ''}
+                    </a>
+                """
 
-        bottom_nav_html = f"""
+        # CSS、HTML、JavaScriptを分離して注入する
+        css_style = """
         <style>
-            .bottom-nav {{
+            .bottom-nav {
                 position: fixed; bottom: 0; left: 0; width: 100%;
                 background-color: #1a1a1a; border-top: 1px solid #333;
                 display: flex; justify-content: space-around; align-items: stretch;
                 padding: 5px 0; z-index: 999;
-            }}
-            .nav-item {{
+            }
+            .nav-item {
                 display: flex; flex-direction: column; align-items: center;
                 justify-content: center; text-decoration: none; color: #888;
                 flex-grow: 1; padding: 5px 0; position: relative;
-            }}
-            .nav-item.active {{ color: #00aaff; }}
-            .nav-icon {{ font-size: 24px; }}
-            .nav-label {{ font-size: 10px; margin-top: 2px; }}
-            .unread-dot {{
+            }
+            .nav-item.active { color: #00aaff; }
+            .nav-icon { font-size: 24px; }
+            .nav-label { font-size: 10px; margin-top: 2px; }
+            .unread-dot {
                 position: absolute; top: 5px; right: 15px;
                 width: 8px; height: 8px; background-color: #ff4b4b;
                 border-radius: 50%;
-            }}
-            /* Streamlitのメインコンテンツに余白を追加して、バーに隠れないようにする */
-            .main .block-container {{ padding-bottom: 80px; }}
+            }
+            .main .block-container { padding-bottom: 80px !important; }
         </style>
-        <nav class="bottom-nav">
-            {nav_items_html}
-        </nav>
+        """
+        
+        nav_html = f'<nav class="bottom-nav">{nav_items_html}</nav>'
+        
+        swipe_js = """
         <script>
             let touchstartX = 0, touchendX = 0, touchstartY = 0, touchendY = 0;
             const gestureZone = document.querySelector('.main');
-            if (gestureZone) {{
-                gestureZone.addEventListener('touchstart', e => {{
+            if (gestureZone) {
+                gestureZone.addEventListener('touchstart', e => {
                     touchstartX = e.changedTouches[0].screenX;
                     touchstartY = e.changedTouches[0].screenY;
-                }}, {{passive: true}});
-                gestureZone.addEventListener('touchend', e => {{
+                }, {passive: true});
+                gestureZone.addEventListener('touchend', e => {
                     touchendX = e.changedTouches[0].screenX;
                     touchendY = e.changedTouches[0].screenY;
                     const deltaX = touchendX - touchstartX;
                     const deltaY = touchendY - touchstartY;
-                    if (Math.abs(deltaX) > Math.abs(deltaY) + 30 && Math.abs(deltaX) > 50) {{
+                    if (Math.abs(deltaX) > Math.abs(deltaY) + 30 && Math.abs(deltaX) > 50) {
                         const direction = (touchendX < touchstartX) ? 'left' : 'right';
                         const url = new URL(window.location);
                         url.searchParams.set('swipe', direction);
                         url.searchParams.set('v', Date.now());
                         window.location.href = url.href;
-                    }}
-                }}, {{passive: true}});
-            }}
+                    }
+                }, {passive: true});
+            }
         </script>
         """
-        st.markdown(bottom_nav_html, unsafe_allow_html=True)
+
+        # st.markdownを使って、3つの要素を結合してページに注入
+        st.markdown(css_style + nav_html + swipe_js, unsafe_allow_html=True)
         
         # サイドバーはログアウトボタンのみ表示
         with st.sidebar:
