@@ -981,18 +981,20 @@ def get_work_hours_data(start_date, end_date):
             for br in breaks:
                 if br['break_start'] and br['break_end']:
                     break_seconds += (datetime.fromisoformat(br['break_end']) - datetime.fromisoformat(br['break_start'])).total_seconds()
-
-            actual_work_minutes = round((total_seconds - break_seconds) / 60)
+            
+            # ★★★ 修正点: 計算を「時間」単位に戻す ★★★
+            actual_work_hours = (total_seconds - break_seconds) / 3600
+            
             work_date = date.fromisoformat(att['work_date'])
-            if actual_work_minutes > 0:
-                work_data[work_date] = actual_work_minutes
+            if actual_work_hours > 0:
+                work_data[work_date] = actual_work_hours
     conn.close()
     return work_data
 
 def show_work_status_page():
     st.header("出勤状況")
     
-    # --- 上部の月間サマリー表示（変更なし） ---
+    # --- 上部の月間サマリー表示 ---
     col1, col2, col3 = st.columns([1, 6, 1])
     with col1:
         if st.button("先月", key="status_prev"):
@@ -1049,8 +1051,6 @@ def show_work_status_page():
     st.divider()
 
     st.subheader("📊 実働時間グラフ")
-    
-    # --- グラフ表示セクション ---
     tab7, tab30, tab_year = st.tabs(["過去7日間", "当月", "当年"])
 
     with tab7:
@@ -1064,12 +1064,12 @@ def show_work_status_page():
             values = list(weekly_data.values())
             fig, ax = plt.subplots()
             ax.bar(labels, values)
-            ax.set_ylabel('実働時間 (分)') # Y軸ラベルを「分」に変更
-            ax.tick_params(axis='x', rotation=90)
-            ax.yaxis.set_major_locator(plt.MaxNLocator(integer=True))
-            ax.yaxis.set_major_locator(plt.MultipleLocator(10)) # Y軸の目盛りを10分間隔に
+            ax.set_ylabel('実働時間 (時間)')
+            ax.tick_params(axis='x', rotation=90) # X軸ラベルを縦向きに
+            ax.yaxis.set_major_locator(plt.MultipleLocator(1)) # Y軸の目盛りを1時間間隔に
             plt.tight_layout()
             st.pyplot(fig, use_container_width=True)
+            plt.close(fig) # ★★★ 不要なグラフの表示を防ぐ
         else:
             st.info("この期間のデータはありません。")
 
@@ -1083,14 +1083,12 @@ def show_work_status_page():
             values = list(monthly_data.values())
             fig, ax = plt.subplots()
             ax.bar(labels, values)
-            ax.set_ylabel('実働時間 (分)') # Y軸ラベルを「分」に変更
-            tick_labels = [label for label in labels if label in ['10日', '20日', '30日']]
-            ax.set_xticks(tick_labels)
-            ax.tick_params(axis='x', rotation=90)
-            ax.yaxis.set_major_locator(plt.MaxNLocator(integer=True))
-            ax.yaxis.set_major_locator(plt.MultipleLocator(10)) # Y軸の目盛りを10分間隔に
+            ax.set_ylabel('実働時間 (時間)')
+            ax.tick_params(axis='x', rotation=90) # X軸ラベルを縦向きに
+            ax.yaxis.set_major_locator(plt.MultipleLocator(1)) # Y軸の目盛りを1時間間隔に
             plt.tight_layout()
             st.pyplot(fig, use_container_width=True)
+            plt.close(fig) # ★★★ 不要なグラフの表示を防ぐ
         else:
             st.info("この期間のデータはありません。")
 
@@ -1110,63 +1108,12 @@ def show_work_status_page():
             values = all_months['実働時間'].values
             fig, ax = plt.subplots()
             ax.bar(labels, values)
-            ax.set_ylabel('実働時間 (分)') # Y軸ラベルを「分」に変更
-            ax.tick_params(axis='x', rotation=90)
-            ax.yaxis.set_major_locator(plt.MaxNLocator(integer=True))
-            ax.yaxis.set_major_locator(plt.MultipleLocator(10)) # Y軸の目盛りを10分間隔に
+            ax.set_ylabel('実働時間 (時間)')
+            ax.tick_params(axis='x', rotation=90) # X軸ラベルを縦向きに
+            ax.yaxis.set_major_locator(plt.MultipleLocator(1)) # Y軸の目盛りを1時間間隔に
             plt.tight_layout()
             st.pyplot(fig, use_container_width=True)
-        else:
-            st.info("この期間のデータはありません。")
-
-    with tab30:
-        today = date.today()
-        start_of_month = today.replace(day=1)
-        end_of_month = (start_of_month + relativedelta(months=1)) - timedelta(days=1)
-        monthly_data = get_work_hours_data(start_of_month, end_of_month)
-
-        if any(v > 0 for v in monthly_data.values()):
-            labels = [f"{d.day}日" for d in monthly_data.keys()]
-            values = list(monthly_data.values())
-            
-            fig, ax = plt.subplots()
-            ax.bar(labels, values)
-            ax.set_ylabel('実働時間 (時間)')
-            # X軸の目盛りを10日、20日、30日に設定
-            tick_positions = [i for i, label in enumerate(labels) if label in ['10日', '20日', '30日']]
-            ax.set_xticks(tick_positions)
-            ax.tick_params(axis='x', rotation=90)
-            ax.yaxis.set_major_locator(MaxNLocator(integer=True, min_n_ticks=1))
-            plt.tight_layout()
-            st.pyplot(fig)
-        else:
-            st.info("この期間のデータはありません。")
-
-    with tab_year:
-        today = date.today()
-        start_of_year = today.replace(month=1, day=1)
-        end_of_year = today.replace(month=12, day=31)
-        yearly_data = get_work_hours_data(start_of_year, end_of_year)
-        
-        if any(v > 0 for v in yearly_data.values()):
-            df_year = pd.DataFrame(list(yearly_data.items()), columns=['日付', '実働時間'])
-            df_year['月'] = df_year['日付'].apply(lambda d: d.month)
-            monthly_total = df_year.groupby('月')['実働時間'].sum()
-            
-            all_months = pd.DataFrame(index=range(1, 13))
-            all_months['実働時間'] = monthly_total
-            all_months.fillna(0, inplace=True)
-            
-            labels = [f"{m}月" for m in all_months.index]
-            values = all_months['実働時間'].values
-
-            fig, ax = plt.subplots()
-            ax.bar(labels, values)
-            ax.set_ylabel('実働時間 (時間)')
-            ax.tick_params(axis='x', rotation=90)
-            ax.yaxis.set_major_locator(MaxNLocator(integer=True, min_n_ticks=1))
-            plt.tight_layout()
-            st.pyplot(fig)
+            plt.close(fig) # ★★★ 不要なグラフの表示を防ぐ
         else:
             st.info("この期間のデータはありません。")
             
