@@ -108,7 +108,7 @@ def render_dm_chat_window(recipient_id, recipient_name):
                 st.caption(created_at_dt.strftime('%H:%M'))
 
     with st.container():
-        message_input = st.text_input("メッセージを入力...", key=f"dm_input_{recipient_id}", label_visibility="collapsed")
+        message_input = st.text_area("メッセージを入力...", key=f"dm_input_{recipient_id}", label_visibility="collapsed", height=100)
         file_input = st.file_uploader("ファイルを添付", key=f"dm_file_{recipient_id}", label_visibility="collapsed")
         
         if st.button("送信", key=f"dm_send_{recipient_id}"):
