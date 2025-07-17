@@ -1114,27 +1114,28 @@ def show_work_status_page():
         start_of_year = today.replace(month=1, day=1)
         end_of_year = today.replace(month=12, day=31)
         yearly_data = get_work_hours_data(start_of_year, end_of_year)
+        
         if any(v > 0 for v in yearly_data.values()):
-            df_year = pd.DataFrame(list(yearly_data.items()), columns=['日付', '実働時間'])
-            df_year['月'] = df_year['日付'].apply(lambda d: d.month)
-            monthly_total = df_year.groupby('月')['実働時間'].sum()
-            all_months = pd.DataFrame(index=range(1, 13))
-            all_months['実働時間'] = monthly_total
-            all_months.fillna(0, inplace=True)
-            labels = [f"{m}月" for m in all_months.index]
-            values = all_months['実働時間'].values
+            monthly_totals_dict = {i: 0 for i in range(1, 13)}
+            for day, minutes in yearly_data.items():
+                if minutes > 0:
+                    monthly_totals_dict[day.month] += minutes
+
+            labels = [f"{m}月" for m in monthly_totals_dict.keys()]
+            values = list(monthly_totals_dict.values())
+
             fig, ax = plt.subplots()
             ax.bar(labels, values)
             ax.set_ylabel('実働時間 (分)')
             ax.tick_params(axis='x', rotation=90)
             
-            max_val = max(values)
+            max_val = max(values) if values else 0
             if max_val < 60: interval = 5
             elif max_val < 600: interval = 60
             elif max_val < 6000: interval = 300
             else: interval = 1500
             ax.yaxis.set_major_locator(plt.MultipleLocator(interval))
-
+            
             plt.tight_layout()
             st.pyplot(fig, use_container_width=True)
             plt.close(fig)
