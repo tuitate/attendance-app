@@ -32,6 +32,16 @@ def add_message(user_id, content):
     conn.commit()
     conn.close()
 
+def add_attendance_log(user_id, content):
+    """出退勤の記録をデータベースに追加する関数"""
+    conn = get_db_connection()
+    now = get_jst_now().isoformat()
+    # user_id=0 は、これが特定の誰かに宛てたメッセージではなく、システム全体のログであることを示す
+    conn.execute('INSERT INTO messages (user_id, sender_id, content, created_at, message_type) VALUES (?, ?, ?, ?, ?)',
+                 (0, user_id, content, now, 'ATTENDANCE'))
+    conn.commit()
+    conn.close()
+
 def add_broadcast_message(sender_id, content, company_name, file_base64=None, file_name=None, file_type=None):
     conn = get_db_connection()
     try:
@@ -171,6 +181,7 @@ def init_session_state():
         'editing_date': None,
         'show_broadcast_dialog': False,
         'action_just_performed': False,
+        'viewing_attendance_log': False, 
     }
     for key, default_value in defaults.items():
         if key not in st.session_state:
@@ -751,83 +762,102 @@ def show_direct_message_page():
                     st.rerun()
             
 def show_messages_page():
-    st.header("全体メッセージ")
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        pass
-    with col2:
+    # セッションの状態に応じて、表示する画面を切り替える
+    if st.session_state.get('viewing_attendance_log'):
+        # --- 出退勤ログ画面 ---
+        st.header("各従業員の出退勤状況")
+        if st.button("＜ 全体メッセージに戻る"):
+            st.session_state.viewing_attendance_log = False
+            st.rerun()
+        
+        st.info("全従業員の直近の出退勤記録です。")
+        st.divider()
+
+        conn = get_db_connection()
+        logs = conn.execute(
+            "SELECT content, created_at FROM messages WHERE message_type = 'ATTENDANCE' ORDER BY created_at DESC LIMIT 100"
+        ).fetchall()
+        conn.close()
+
+        if not logs:
+            st.info("出退勤の記録はまだありません。")
+        else:
+            for log in logs:
+                content, created_at_str = log
+                created_at_dt = datetime.fromisoformat(created_at_str)
+                st.markdown(f"**{created_at_dt.strftime('%Y年%m月%d日 %H:%M')}**<br>{content}", unsafe_allow_html=True)
+                st.divider()
+
+    else:
+        # --- 全体メッセージ画面（従来通り） ---
+        st.header("全体メッセージ")
+
+        # ★★★ ボタンの順序を変更 ★★★
+        if st.button("各従業員の出退勤状況", use_container_width=True):
+            st.session_state.viewing_attendance_log = True
+            st.rerun()
+        
         if st.button("📝 全社へメッセージを送信する", use_container_width=True, type="primary"):
             st.session_state.show_broadcast_dialog = True
             st.rerun()
 
-    if st.session_state.get('show_broadcast_dialog'):
-        st.session_state.show_broadcast_dialog = False
-        broadcast_message_dialog()
+        if st.session_state.get('show_broadcast_dialog'):
+            st.session_state.show_broadcast_dialog = False
+            broadcast_message_dialog()
 
-    st.divider()
+        st.divider()
 
-    conn = get_db_connection()
-    messages = conn.execute("""
-        SELECT id, content, created_at, file_base64, file_name, file_type, sender_id FROM messages
-        WHERE user_id = ? AND message_type IN ('BROADCAST', 'SYSTEM')
-        ORDER BY created_at DESC
-    """, (st.session_state.user_id,)).fetchall()
-    
-    if not messages:
-        st.info("新しいメッセージはありません。")
-    else:
-        for msg in messages:
-            with st.container(border=True):
-                created_at_str = msg[2]
-                is_confirming_this_message = st.session_state.get('confirming_delete_message_created_at') == created_at_str
-
-                if is_confirming_this_message:
-                    st.warning("このメッセージを全ユーザーから削除します。よろしいですか？")
-                    c1, c2 = st.columns(2)
-                    with c1:
-                        if st.button("はい、削除します", key=f"confirm_delete_{msg[0]}", type="primary", use_container_width=True):
-                            delete_broadcast_message(created_at_str)
-                            st.session_state.confirming_delete_message_created_at = None
-                            st.toast("メッセージを削除しました。")
-                            st.rerun()
-                    with c2:
-                        if st.button("いいえ", key=f"cancel_delete_{msg[0]}", use_container_width=True):
-                            st.session_state.confirming_delete_message_created_at = None
-                            st.rerun()
-                else:
-                    msg_col1, msg_col2 = st.columns([4, 1])
-                    with msg_col1:
-                        created_at_dt = datetime.fromisoformat(created_at_str)
-                        st.markdown(f"**{created_at_dt.strftime('%Y年%m月%d日 %H:%M')}**")
-                    with msg_col2:
-                        content_str = msg[1]
-                        is_broadcast = content_str and content_str.startswith("**【お知らせ】")
-                        if is_broadcast and msg[6] == st.session_state.user_id:
-                            if st.button("🗑️ 削除", key=f"delete_{msg[0]}", use_container_width=True):
-                                st.session_state.confirming_delete_message_created_at = created_at_str
+        conn = get_db_connection()
+        messages = conn.execute("SELECT id, content, created_at, file_base64, file_name, file_type, sender_id FROM messages WHERE user_id = ? AND message_type IN ('BROADCAST', 'SYSTEM') ORDER BY created_at DESC", (st.session_state.user_id,)).fetchall()
+        conn.close()
+        
+        if not messages:
+            st.info("新しいメッセージはありません。")
+        else:
+            for msg in messages:
+                with st.container(border=True):
+                    created_at_str = msg[2]
+                    is_confirming_this_message = st.session_state.get('confirming_delete_message_created_at') == created_at_str
+                    if is_confirming_this_message:
+                        st.warning("このメッセージを全ユーザーから削除します。よろしいですか？")
+                        c1, c2 = st.columns(2)
+                        with c1:
+                            if st.button("はい、削除します", key=f"confirm_delete_{msg[0]}", type="primary", use_container_width=True):
+                                delete_broadcast_message(created_at_str)
+                                st.session_state.confirming_delete_message_created_at = None
+                                st.toast("メッセージを削除しました。")
                                 st.rerun()
-                    
-                    if msg[1]:
-                        st.markdown(msg[1])
-                    if msg[3]:
-                        file_bytes = base64.b64decode(msg[3])
-                        file_type = msg[5]
-                        file_name = msg[4] or "downloaded_file"
-
-                        if file_type and file_type.startswith("image/"):
-                            st.image(file_bytes)
-                        else:
-                            st.download_button(
-                                label=f"📎 ダウンロード: {file_name}",
-                                data=file_bytes,
-                                file_name=file_name,
-                                mime=file_type
-                            )
-    
-    conn.execute('UPDATE messages SET is_read = 1 WHERE user_id = ? AND message_type IN ("BROADCAST", "SYSTEM")', (st.session_state.user_id,))
-    conn.commit()
-    conn.close()
-
+                        with c2:
+                            if st.button("いいえ", key=f"cancel_delete_{msg[0]}", use_container_width=True):
+                                st.session_state.confirming_delete_message_created_at = None
+                                st.rerun()
+                    else:
+                        msg_col1, msg_col2 = st.columns([4, 1])
+                        with msg_col1:
+                            st.markdown(f"**{datetime.fromisoformat(created_at_str).strftime('%Y年%m月%d日 %H:%M')}**")
+                        with msg_col2:
+                            is_broadcast = msg[1] and msg[1].startswith("**【お知らせ】")
+                            if is_broadcast and msg[6] == st.session_state.user_id:
+                                if st.button("🗑️ 削除", key=f"delete_{msg[0]}", use_container_width=True):
+                                    st.session_state.confirming_delete_message_created_at = created_at_str
+                                    st.rerun()
+                        if msg[1]: st.markdown(msg[1])
+                        if msg[3]:
+                            file_bytes = base64.b64decode(msg[3])
+                            file_type = msg[5]
+                            file_name = msg[4] or "downloaded_file"
+                            if file_type and file_type.startswith("image/"):
+                                st.image(file_bytes)
+                            else:
+                                st.download_button(label=f"📎 ダウンロード: {file_name}", data=file_bytes, file_name=file_name, mime=file_type)
+        
+        conn_update = get_db_connection()
+        try:
+            conn_update.execute('UPDATE messages SET is_read = 1 WHERE user_id = ? AND message_type IN ("BROADCAST", "SYSTEM")', (st.session_state.user_id,))
+            conn_update.commit()
+        finally:
+            conn_update.close()
+            
 def show_user_info_page():
     st.header("ユーザー情報")
     conn = get_db_connection()
@@ -1154,7 +1184,9 @@ def record_clock_in():
     st.session_state.attendance_id = cursor.lastrowid
     st.session_state.work_status = "working"
     conn.close()
-    add_broadcast_message(st.session_state.user_id, f"✅ {st.session_state.user_name}さん、出勤しました。（{now.strftime('%H:%M')}）", st.session_state.user_company)
+    # ★★★ 修正点: add_broadcast_message から add_attendance_log に変更 ★★★
+    log_content = f"✅ {st.session_state.user_name}さん、出勤しました。（{now.strftime('%H:%M')}）"
+    add_attendance_log(st.session_state.user_id, log_content)
     st.session_state.action_just_performed = True
 
 def record_clock_out():
@@ -1173,7 +1205,11 @@ def record_clock_out():
         for br in breaks:
             if br['break_start'] and br['break_end']:
                 total_break_seconds += (datetime.fromisoformat(br['break_end']) - datetime.fromisoformat(br['break_start'])).total_seconds()
-        add_broadcast_message(st.session_state.user_id, f"🌙 {st.session_state.user_name}さん、退勤しました。（{now.strftime('%H:%M')}）", st.session_state.user_company)
+        
+        # ★★★ 修正点: add_broadcast_message から add_attendance_log に変更 ★★★
+        log_content = f"🌙 {st.session_state.user_name}さん、退勤しました。（{now.strftime('%H:%M')}）"
+        add_attendance_log(st.session_state.user_id, log_content)
+
         if total_work_seconds > 8 * 3600 and total_break_seconds < 60 * 60:
             add_message(st.session_state.user_id, "⚠️ **警告:** 8時間以上の勤務に対し、休憩が60分未満です。")
         elif total_work_seconds > 6 * 3600 and total_break_seconds < 45 * 60:
@@ -1311,10 +1347,12 @@ def display_work_summary():
 
             reminder_time = end_dt + timedelta(minutes=15)
             now = get_jst_now()
-
+            
             if now > reminder_time and st.session_state.get('last_clock_out_reminder_date') != today_str:
-                add_message(st.session_state.user_id, "⏰ 退勤予定時刻を15分過ぎています。速やかに退勤してください。")
-                st.session_state.last_clock_out_reminder_date = today_str
+                # --- ★★★ 修正点: add_message から add_attendance_log に変更 ★★★ ---
+                log_content = f"⏰ {st.session_state.user_name}さん、退勤予定時刻を15分過ぎています。速やかに退勤してください。"
+                add_attendance_log(st.session_state.user_id, log_content)
+                st.session_state.last_clock_out_reminder_date = today_st
 
 def handle_page_change():
     if st.session_state.navigation_choice != 'ダイレクトメッセージ':
