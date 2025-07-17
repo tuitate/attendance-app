@@ -1103,7 +1103,6 @@ def show_work_status_page():
             st.info("この期間のデータはありません。")
 
     with tab_year:
-        st.write("今年の月別実働時間を表示します。")
         today = date.today()
         start_of_year = today.replace(month=1, day=1)
         end_of_year = today.replace(month=12, day=31)
