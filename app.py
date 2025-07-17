@@ -1348,22 +1348,25 @@ def main():
             "ユーザー登録": {"icon": "📝", "func": show_user_registration_page}
         }
 
-        tab_titles = []
-        for key in ordered_page_keys:
-            info = page_definitions.get(key)
-            if info:
-                label = f"{info['icon']} {key}"
-                if info.get('unread', 0) > 0:
-                    label += " 🔴"
-                tab_titles.append(label)
+        # ボタンを横に並べてタブのように見せる
+        cols = st.columns(len(ordered_page_keys))
+        for i, page_key in enumerate(ordered_page_keys):
+            info = page_definitions[page_key]
+            label = f"{info['icon']} {page_key}"
+            if info.get('unread', 0) > 0:
+                label += " 🔴"
+            
+            # 選択中のタブはprimary、それ以外はsecondaryのボタンにする
+            button_type = "primary" if st.session_state.page == page_key else "secondary"
+            if cols[i].button(label, use_container_width=True, type=button_type):
+                st.session_state.page = page_key
+                st.rerun()
 
-        tabs = st.tabs(tab_titles)
+        st.divider()
 
-        for i, tab in enumerate(tabs):
-            with tab:
-                page_key_to_render = ordered_page_keys[i]
-                render_function = page_definitions[page_key_to_render]["func"]
-                render_function()
+        # 現在選択されているページの関数を実行
+        active_page_function = page_definitions[st.session_state.page]["func"]
+        active_page_function()
 
         with st.sidebar:
             st.title(" ")
