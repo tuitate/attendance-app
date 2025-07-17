@@ -330,8 +330,8 @@ def show_login_register_page():
                         st.session_state.user_company = user[5]
                         st.session_state.user_position = user[6]
                         get_today_attendance_status(user[0])
-                        # ★★★ ログイン時に豆知識を設定 ★★★
                         st.session_state.daily_tip = random.choice(TIPS)
+                        st.rerun()
                     else:
                         st.error("従業員IDまたはパスワードが正しくありません。")
                         
@@ -366,8 +366,8 @@ def show_login_register_page():
                             st.session_state.user_company = user[5]
                             st.session_state.user_position = user[6]
                             get_today_attendance_status(user[0])
-                            # ★★★ 新規登録時にも豆知識を設定 ★★★
                             st.session_state.daily_tip = random.choice(TIPS)
+                            st.rerun()
                     else:
                         st.error("その従業員IDは既に使用されています。")
                         
