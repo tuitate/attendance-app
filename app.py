@@ -519,69 +519,81 @@ def render_shift_edit_form(target_date):
 def show_shift_management_page():
     st.header("シフト管理")
 
+    # 編集フォーム表示のロジック（変更なし）
     if st.session_state.get('editing_date'):
         render_shift_edit_form(st.session_state.editing_date)
+        return
 
-    else:
-        st.info("カレンダーの日付または登録済みのシフトをクリックして編集フォームを開きます。")
+    st.info("カレンダーの日付または登録済みのシフトをクリックして編集フォームを開きます。")
 
-        conn = get_db_connection()
-        shifts = conn.execute('SELECT id, start_datetime, end_datetime FROM shifts WHERE user_id = ?', (st.session_state.user_id,)).fetchall()
-        conn.close()
+    # 月のナビゲーション（変更なし）
+    col1, col2 = st.columns([3, 2])
+    with col1:
+        st.subheader(st.session_state.calendar_date.strftime('%Y年 %m月'), anchor=False, divider='blue')
+    with col2:
+        btn_col1, btn_col2 = st.columns(2)
+        with btn_col1:
+            if st.button("先月", use_container_width=True):
+                st.session_state.calendar_date -= relativedelta(months=1)
+                st.rerun()
+        with btn_col2:
+            if st.button("来月", use_container_width=True):
+                st.session_state.calendar_date += relativedelta(months=1)
+                st.rerun()
 
-        events = []
-        for shift in shifts:
-            start_dt = datetime.fromisoformat(shift['start_datetime'])
-            end_dt = datetime.fromisoformat(shift['end_datetime'])
-            title = f"{start_dt.strftime('%H:%M')}~{end_dt.strftime('%H:%M')}"
-            if start_dt.time() >= time(22, 0) or end_dt.time() <= time(5, 0):
-                title += " (夜)"
-            color = "#FF6347" if (start_dt.time() >= time(22, 0) or end_dt.time() <= time(5, 0)) else "#1E90FF"
-            events.append({
-                "title": title, "start": start_dt.isoformat(), "end": end_dt.isoformat(),
-                "color": color, "id": shift['id'], "allDay": False
-            })
+    # DBからシフト情報を取得（変更なし）
+    conn = get_db_connection()
+    conn.row_factory = sqlite3.Row
+    shifts = conn.execute('SELECT id, start_datetime, end_datetime FROM shifts WHERE user_id = ?', (st.session_state.user_id,)).fetchall()
+    conn.close()
 
-        col1, col2 = st.columns([3, 2])
-        with col1:
-            st.subheader(st.session_state.calendar_date.strftime('%Y年 %m月'), anchor=False, divider='blue')
+    # (夜)や色分けを含むイベントリストを作成（変更なし）
+    events = []
+    for shift in shifts:
+        start_dt = datetime.fromisoformat(shift['start_datetime'])
+        end_dt = datetime.fromisoformat(shift['end_datetime'])
+        title = f"{start_dt.strftime('%H:%M')}~{end_dt.strftime('%H:%M')}"
+        if start_dt.time() >= time(22, 0) or end_dt.time() <= time(5, 0):
+            title += " (夜)"
+        color = "#FF6347" if (start_dt.time() >= time(22, 0) or end_dt.time() <= time(5, 0)) else "#1E90FF"
+        events.append({
+            "title": title, "start": start_dt.isoformat(), "end": end_dt.isoformat(),
+            "color": color, "id": shift['id'], "allDay": False
+        })
 
-        with col2:
-            btn_col1, btn_col2 = st.columns(2)
-            with btn_col1:
-                if st.button("先月", use_container_width=True):
-                    st.session_state.calendar_date -= relativedelta(months=1)
-                    st.rerun()
-            with btn_col2:
-                if st.button("来月", use_container_width=True):
-                    st.session_state.calendar_date += relativedelta(months=1)
-                    st.rerun()
-
+    # --- ★★★ ここから修正 ★★★ ---
+    # 高さを指定したコンテナ内にカレンダーを配置
+    with st.container(height=750):
         calendar_result = calendar(
             events=events,
             options={
-                "headerToolbar": False, "initialDate": st.session_state.calendar_date.isoformat(),
-                "initialView": "dayGridMonth", "locale": "ja", "selectable": True,
+                "headerToolbar": False,
+                "initialDate": st.session_state.calendar_date.isoformat(),
+                "initialView": "dayGridMonth",
+                "locale": "ja",
+                "selectable": True,
             },
             custom_css=".fc-event-title { font-weight: 700; }",
             key=f"calendar_{st.session_state.calendar_date.year}_{st.session_state.calendar_date.month}"
         )
+    # --- ★★★ ここまで修正 ★★★ ---
 
-        if isinstance(calendar_result, dict):
-            clicked_date = None
-            if 'dateClick' in calendar_result:
-                utc_dt = datetime.fromisoformat(calendar_result['dateClick']['date'].replace('Z', '+00:00'))
-                clicked_date = utc_dt.astimezone(JST).date()
-            elif 'eventClick' in calendar_result:
-                start_str = calendar_result['eventClick']['event']['start'].split('T')[0]
-                clicked_date = date.fromisoformat(start_str)
-
-            if clicked_date:
-                if clicked_date < date.today():
-                    st.warning("過去の日付のシフトは変更できません。")
-                else:
-                    st.session_state.editing_date = clicked_date
-                    st.rerun()
+    # クリック処理（変更なし）
+    if isinstance(calendar_result, dict):
+        clicked_date = None
+        if 'dateClick' in calendar_result:
+            utc_dt = datetime.fromisoformat(calendar_result['dateClick']['date'].replace('Z', '+00:00'))
+            clicked_date = utc_dt.astimezone(JST).date()
+        elif 'eventClick' in calendar_result:
+            start_str = calendar_result['eventClick']['event']['start'].split('T')[0]
+            clicked_date = date.fromisoformat(start_str)
+        
+        if clicked_date:
+            if clicked_date < date.today():
+                st.warning("過去の日付のシフトは変更できません。")
+            else:
+                st.session_state.editing_date = clicked_date
+                st.rerun()
 
 def show_shift_table_page():
     st.header("月間シフト表")
