@@ -1320,7 +1320,8 @@ def main():
 
     if not st.session_state.get('logged_in'):
         show_login_register_page()
-        else:
+    
+    else:
         # --- ★★★ ここから修正 ★★★ ---
         # 毎回データベースから最新の勤怠状況を読み込むことで同期を実現
         if st.session_state.get('user_id'):
