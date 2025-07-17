@@ -350,7 +350,10 @@ def show_login_register_page():
                         st.error("その従業員IDは既に使用されています。")
 
 def show_timecard_page():
-    if not st.session_state.get('show_broadcast_dialog', False):
+    # --- ★★★ 修正点: このページの表示直前に状態を同期する ★★★ ---
+    get_today_attendance_status(st.session_state.user_id)
+    
+    if st.session_state.get('page') == "タイムカード":
         st_autorefresh(interval=1000, key="clock_refresh")
 
     st.title(f"ようこそ、{st.session_state.user_name}さん")
@@ -379,22 +382,25 @@ def show_timecard_page():
                         action_details['func']()
                         st.session_state.confirmation_action = None
                         st.session_state.clock_in_error = None
+                        st.rerun()
                 with col2:
                     if st.button("いいえ", use_container_width=True):
                         st.session_state.confirmation_action = None
+                        st.rerun()
         else:
             if st.session_state.work_status == "not_started":
                 if st.button("出勤", key="clock_in", use_container_width=True):
                     conn = get_db_connection()
                     today_str = get_jst_now().date().isoformat()
-                    shift = conn.execute("SELECT start_datetime FROM shifts WHERE user_id = ? AND date(start_datetime) = ?", (st.session_state.user_id, today_str)).fetchone()
+                    query = "SELECT start_datetime FROM shifts WHERE user_id = ? AND start_datetime LIKE ?"
+                    shift = conn.execute(query, (st.session_state.user_id, f"{today_str}%")).fetchone()
                     conn.close()
                     
                     error_msg = None
                     if shift is None:
                         error_msg = "本日のシフトが登録されていません。先にシフトを登録してください。"
                     else:
-                        naive_start_dt = datetime.fromisoformat(shift[0]) # インデックスでアクセス
+                        naive_start_dt = datetime.fromisoformat(shift[0])
                         start_dt = naive_start_dt.replace(tzinfo=JST)
                         earliest_clock_in = start_dt - timedelta(minutes=5)
                         now = get_jst_now()
@@ -406,7 +412,6 @@ def show_timecard_page():
                     else:
                         st.session_state.clock_in_error = None
                         st.session_state.confirmation_action = 'clock_in'
-                    
                     st.rerun()
             
             elif st.session_state.work_status == "working":
@@ -429,7 +434,7 @@ def show_timecard_page():
                     st.rerun()
     
     display_work_summary()
-
+    
 def render_shift_edit_form(target_date):
     with st.container(border=True):
         col1, col2 = st.columns([4, 1])
@@ -1313,9 +1318,6 @@ def main():
         show_login_register_page()
     
     else:
-        if st.session_state.get('user_id'):
-            get_today_attendance_status(st.session_state.user_id)
-
         conn = get_db_connection()
         current_user_id = st.session_state.user_id
         broadcast_unread_count = conn.execute("SELECT COUNT(*) FROM messages WHERE user_id = ? AND is_read = 0 AND message_type IN ('BROADCAST', 'SYSTEM')", (current_user_id,)).fetchone()[0]
