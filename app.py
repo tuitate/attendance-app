@@ -346,7 +346,6 @@ def show_login_register_page():
                             st.session_state.user_company = user['company']
                             st.session_state.user_position = user['position']
                             get_today_attendance_status(user['id'])
-                            st.rerun()
                     else:
                         st.error("その従業員IDは既に使用されています。")
 
