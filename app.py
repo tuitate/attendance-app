@@ -519,14 +519,12 @@ def render_shift_edit_form(target_date):
 def show_shift_management_page():
     st.header("シフト管理")
 
-    # 編集フォーム表示のロジック（変更なし）
     if st.session_state.get('editing_date'):
         render_shift_edit_form(st.session_state.editing_date)
         return
 
     st.info("カレンダーの日付または登録済みのシフトをクリックして編集フォームを開きます。")
 
-    # 月のナビゲーション（変更なし）
     col1, col2 = st.columns([3, 2])
     with col1:
         st.subheader(st.session_state.calendar_date.strftime('%Y年 %m月'), anchor=False, divider='blue')
@@ -541,13 +539,11 @@ def show_shift_management_page():
                 st.session_state.calendar_date += relativedelta(months=1)
                 st.rerun()
 
-    # DBからシフト情報を取得（変更なし）
     conn = get_db_connection()
     conn.row_factory = sqlite3.Row
     shifts = conn.execute('SELECT id, start_datetime, end_datetime FROM shifts WHERE user_id = ?', (st.session_state.user_id,)).fetchall()
     conn.close()
 
-    # (夜)や色分けを含むイベントリストを作成（変更なし）
     events = []
     for shift in shifts:
         start_dt = datetime.fromisoformat(shift['start_datetime'])
@@ -562,23 +558,31 @@ def show_shift_management_page():
         })
 
     # --- ★★★ ここから修正 ★★★ ---
-    # 高さを指定したコンテナ内にカレンダーを配置
-    with st.container(height=750):
-        calendar_result = calendar(
-            events=events,
-            options={
-                "headerToolbar": False,
-                "initialDate": st.session_state.calendar_date.isoformat(),
-                "initialView": "dayGridMonth",
-                "locale": "ja",
-                "selectable": True,
-            },
-            custom_css=".fc-event-title { font-weight: 700; }",
-            key=f"calendar_{st.session_state.calendar_date.year}_{st.session_state.calendar_date.month}"
-        )
+    # CSSでカレンダーの「最低限の高さ」を指定する
+    st.markdown("""
+        <style>
+        .fc-view-harness {
+            min-height: 700px !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+    
+    # st.container(height=...) を削除し、直接カレンダーを呼び出す
+    calendar_result = calendar(
+        events=events,
+        options={
+            "headerToolbar": False,
+            "initialDate": st.session_state.calendar_date.isoformat(),
+            "initialView": "dayGridMonth",
+            "locale": "ja",
+            "selectable": True,
+            "height": "auto" # 高さは自動調整に任せる
+        },
+        custom_css=".fc-event-title { font-weight: 700; }",
+        key=f"calendar_{st.session_state.calendar_date.year}_{st.session_state.calendar_date.month}"
+    )
     # --- ★★★ ここまで修正 ★★★ ---
 
-    # クリック処理（変更なし）
     if isinstance(calendar_result, dict):
         clicked_date = None
         if 'dateClick' in calendar_result:
@@ -594,7 +598,7 @@ def show_shift_management_page():
             else:
                 st.session_state.editing_date = clicked_date
                 st.rerun()
-
+                
 def show_shift_table_page():
     st.header("月間シフト表")
     col1, col2, col3 = st.columns([1, 6, 1])
