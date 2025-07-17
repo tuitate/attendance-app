@@ -433,9 +433,7 @@ def show_timecard_page():
     display_work_summary()
 
 def render_shift_edit_form(target_date):
-    """ページ内にシフト編集フォームを描画する関数"""
     with st.container(border=True):
-        # フォームのヘッダーと閉じるボタン
         col1, col2 = st.columns([4, 1])
         with col1:
             st.subheader(f"🗓️ {target_date.strftime('%Y年%m月%d日')} のシフト登録・編集")
@@ -444,7 +442,6 @@ def render_shift_edit_form(target_date):
                 st.session_state.editing_date = None
                 st.rerun()
 
-        # 編集対象の日付の既存シフトを取得
         conn = get_db_connection()
         conn.row_factory = sqlite3.Row
         existing_shift = conn.execute(
@@ -453,7 +450,6 @@ def render_shift_edit_form(target_date):
         ).fetchone()
         conn.close()
 
-        # デフォルト値を設定
         if existing_shift:
             default_start = datetime.fromisoformat(existing_shift['start_datetime'])
             default_end = datetime.fromisoformat(existing_shift['end_datetime'])
@@ -463,7 +459,6 @@ def render_shift_edit_form(target_date):
             default_start = datetime.combine(target_date, st.session_state.last_shift_start_time)
             default_end = datetime.combine(default_end_date, st.session_state.last_shift_end_time)
 
-        # st.formを使用して入力とボタンをグループ化
         with st.form(key=f"shift_form_{target_date}"):
             c1, c2 = st.columns(2)
             with c1:
@@ -476,15 +471,12 @@ def render_shift_edit_form(target_date):
             start_datetime = datetime.combine(start_date_input, start_time_input)
             end_datetime = datetime.combine(end_date_input, end_time_input)
 
-            # 登録・削除ボタン
             btn_col1, btn_col2, _ = st.columns([1, 1, 3])
             with btn_col1:
                 save_button = st.form_submit_button("登録・更新", use_container_width=True, type="primary")
             with btn_col2:
                 delete_button = st.form_submit_button("削除", use_container_width=True)
 
-        # --- ★★★ ここから修正 ★★★ ---
-        # フォームのボタンが押された後の処理
         if save_button:
             if start_datetime >= end_datetime:
                 st.error("出勤日時は退勤日時より前に設定してください。")
@@ -502,7 +494,6 @@ def render_shift_edit_form(target_date):
                 st.session_state.last_shift_end_time = end_datetime.time()
                 st.toast("シフトを保存しました！", icon="✅")
                 st.session_state.editing_date = None
-                # st.rerun() # この行を削除
 
         if delete_button:
             if existing_shift:
@@ -512,7 +503,6 @@ def render_shift_edit_form(target_date):
                 conn.close()
                 st.toast("シフトを削除しました。", icon="🗑️")
                 st.session_state.editing_date = None
-                # st.rerun() # この行を削除
             else:
                 st.warning("削除するシフトが登録されていません。")
                 
@@ -557,8 +547,6 @@ def show_shift_management_page():
             "color": color, "id": shift['id'], "allDay": False
         })
 
-    # --- ★★★ ここから修正 ★★★ ---
-    # CSSでカレンダーの「最低限の高さ」を指定する
     st.markdown("""
         <style>
         .fc-view-harness {
@@ -566,8 +554,7 @@ def show_shift_management_page():
         }
         </style>
     """, unsafe_allow_html=True)
-    
-    # st.container(height=...) を削除し、直接カレンダーを呼び出す
+
     calendar_result = calendar(
         events=events,
         options={
@@ -576,12 +563,11 @@ def show_shift_management_page():
             "initialView": "dayGridMonth",
             "locale": "ja",
             "selectable": True,
-            "height": "auto" # 高さは自動調整に任せる
+            "height": "auto"
         },
         custom_css=".fc-event-title { font-weight: 700; }",
         key=f"calendar_{st.session_state.calendar_date.year}_{st.session_state.calendar_date.month}"
     )
-    # --- ★★★ ここまで修正 ★★★ ---
 
     if isinstance(calendar_result, dict):
         clicked_date = None
@@ -990,8 +976,7 @@ def get_work_hours_data(start_date, end_date):
             for br in breaks:
                 if br['break_start'] and br['break_end']:
                     break_seconds += (datetime.fromisoformat(br['break_end']) - datetime.fromisoformat(br['break_start'])).total_seconds()
-            
-            # ★★★ 修正点: 時間を整数に丸める ★★★
+
             actual_work_hours = round((total_seconds - break_seconds) / 3600)
             work_date = date.fromisoformat(att['work_date'])
             if actual_work_hours > 0:
@@ -1001,8 +986,7 @@ def get_work_hours_data(start_date, end_date):
 
 def show_work_status_page():
     st.header("出勤状況")
-    
-    # --- ★★★ 修正点: 4つのメトリクス表示に戻す ★★★ ---
+
     col1, col2, col3 = st.columns([1, 6, 1])
     with col1:
         if st.button("先月", key="status_prev"):
@@ -1074,14 +1058,13 @@ def show_work_status_page():
     m_col4.metric("時間外労働時間", overtime_str)
     st.divider()
 
-    # --- ★★★ ここからグラフ表示のロジックを全面的に修正 ★★★ ---
     st.subheader("📊 実働時間グラフ")
     
     try:
         plt.rcParams['font.family'] = 'Hiragino Maru Gothic Pro' # Mac
     except:
         try:
-            plt.rcParams['font.family'] = 'Yu Gothic' # Windows
+            plt.rcParams['font.family'] = 'Yu Gothic'
         except:
             plt.rcParams['font.family'] = 'sans-serif'
 
@@ -1102,8 +1085,8 @@ def show_work_status_page():
             fig, ax = plt.subplots()
             ax.bar(labels, values)
             ax.set_ylabel('実働時間 (時間)')
-            ax.tick_params(axis='x', rotation=90) # X軸ラベルを縦向きに
-            ax.yaxis.set_major_locator(MaxNLocator(integer=True, min_n_ticks=1)) # Y軸を整数に
+            ax.tick_params(axis='x', rotation=90)
+            ax.yaxis.set_major_locator(MaxNLocator(integer=True, min_n_ticks=1))
             plt.tight_layout()
             st.pyplot(fig)
         else:
@@ -1338,11 +1321,8 @@ def main():
         show_login_register_page()
     
     else:
-        # --- ★★★ ここから修正 ★★★ ---
-        # 毎回データベースから最新の勤怠状況を読み込むことで同期を実現
         if st.session_state.get('user_id'):
             get_today_attendance_status(st.session_state.user_id)
-        # --- ★★★ ここまで修正 ★★★ ---
 
         conn = get_db_connection()
         current_user_id = st.session_state.user_id
