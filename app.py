@@ -170,6 +170,7 @@ def init_session_state():
         'dm_selected_user_id': None,
         'editing_date': None,
         'show_broadcast_dialog': False,
+        'action_just_performed': False,
     }
     for key, default_value in defaults.items():
         if key not in st.session_state:
@@ -350,79 +351,92 @@ def show_login_register_page():
                         st.error("その従業員IDは既に使用されています。")
 
 def show_timecard_page():
+    # アクション直後でなければ、DBから最新の状態を取得して同期する
+    if not st.session_state.get('action_just_performed', False):
+        get_today_attendance_status(st.session_state.user_id)
+    # 次回の実行のためにフラグをリセット
+    st.session_state.action_just_performed = False
+    
     # タイムカードページが開かれている時だけ自動更新
     if st.session_state.get('page') == "タイムカード":
-        get_today_attendance_status(st.session_state.user_id)
         st_autorefresh(interval=1000, key="clock_refresh")
 
     st.title(f"ようこそ、{st.session_state.user_name}さん")
     st.header(get_jst_now().strftime("%Y-%m-%d %H:%M:%S"))
 
-    # ★★★ 確認画面の仕組みを全体的に削除・簡略化 ★★★
+    action_map = {
+        'clock_in': {'message': '出勤しますか？', 'func': record_clock_in},
+        'clock_out': {'message': '退勤しますか？', 'func': record_clock_out},
+        'break_start': {'message': '休憩を開始しますか？', 'func': record_break_start},
+        'break_end': {'message': '休憩を終了しますか？', 'func': record_break_end},
+        'cancel_clock_in': {'message': '本当に出勤を取り消しますか？\n\nこの操作は元に戻せません。', 'func': record_clock_in_cancellation}
+    }
+
     button_placeholder = st.empty()
     with button_placeholder.container():
-        if st.session_state.work_status == "not_started":
-            if st.button("出勤", key="clock_in", use_container_width=True):
-                conn = get_db_connection()
-                today_str = get_jst_now().date().isoformat()
-                query = "SELECT start_datetime FROM shifts WHERE user_id = ? AND start_datetime LIKE ?"
-                shift = conn.execute(query, (st.session_state.user_id, f"{today_str}%")).fetchone()
-                conn.close()
-                
-                if shift is None:
-                    st.warning("本日のシフトが登録されていません。先にシフトを登録してください。")
-                    st.stop()
-                
-                naive_start_dt = datetime.fromisoformat(shift[0])
-                start_dt = naive_start_dt.replace(tzinfo=JST)
-                earliest_clock_in = start_dt - timedelta(minutes=5)
-                now = get_jst_now()
+        if st.session_state.get('clock_in_error'):
+            st.warning(st.session_state.clock_in_error)
 
-                if now < earliest_clock_in:
-                    st.warning(f"出勤できません。出勤時刻の5分前（{earliest_clock_in.strftime('%H:%M')}）から打刻できます。")
-                    st.stop()
-                
-                # 確認なしで直接実行
-                record_clock_in()
-                st.toast("出勤しました。")
-                st.rerun()
-        
-        elif st.session_state.work_status == "working":
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                if st.button("退勤", key="clock_out", use_container_width=True, type="primary"):
-                    record_clock_out()
-                    st.toast("退勤しました。")
+        # ★★★ 確認画面のロジックを復活 ★★★
+        if st.session_state.get('confirmation_action'):
+            action_details = action_map.get(st.session_state.confirmation_action)
+            if action_details:
+                st.warning(action_details['message'])
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("はい", use_container_width=True, type="primary"):
+                        action_details['func']()
+                        st.session_state.confirmation_action = None
+                        st.session_state.clock_in_error = None
+                        st.rerun()
+                with col2:
+                    if st.button("いいえ", use_container_width=True):
+                        st.session_state.confirmation_action = None
+                        st.rerun()
+        else:
+            if st.session_state.work_status == "not_started":
+                if st.button("出勤", key="clock_in", use_container_width=True):
+                    conn = get_db_connection()
+                    today_str = get_jst_now().date().isoformat()
+                    query = "SELECT start_datetime FROM shifts WHERE user_id = ? AND start_datetime LIKE ?"
+                    shift = conn.execute(query, (st.session_state.user_id, f"{today_str}%")).fetchone()
+                    conn.close()
+                    
+                    error_msg = None
+                    if shift is None:
+                        error_msg = "本日のシフトが登録されていません。先にシフトを登録してください。"
+                    else:
+                        naive_start_dt = datetime.fromisoformat(shift[0])
+                        start_dt = naive_start_dt.replace(tzinfo=JST)
+                        earliest_clock_in = start_dt - timedelta(minutes=5)
+                        now = get_jst_now()
+                        if now < earliest_clock_in:
+                            error_msg = f"出勤できません。出勤時刻の5分前（{earliest_clock_in.strftime('%H:%M')}）から打刻できます。"
+                    
+                    if error_msg:
+                        st.session_state.clock_in_error = error_msg
+                    else:
+                        st.session_state.clock_in_error = None
+                        st.session_state.confirmation_action = 'clock_in'
                     st.rerun()
-            with col2:
-                if st.button("休憩開始", key="break_start", use_container_width=True):
-                    record_break_start()
-                    st.toast("休憩を開始しました。")
-                    st.rerun()
-            with col3:
-                # 出勤取り消しは危険な操作なので、確認を残します
-                if st.button("出勤取り消し", key="cancel_clock_in", use_container_width=True):
-                    st.session_state.confirmation_action = 'cancel_clock_in'
-                    st.rerun()
-
-        elif st.session_state.work_status == "on_break":
-            if st.button("休憩終了", key="break_end", use_container_width=True):
-                record_break_end()
-                st.toast("休憩を終了しました。")
-                st.rerun()
-
-        # 出勤取り消しの確認画面だけは残す
-        if st.session_state.get('confirmation_action') == 'cancel_clock_in':
-            st.warning("本当に出勤を取り消しますか？\n\nこの操作は元に戻せません。")
-            c1, c2 = st.columns(2)
-            with c1:
-                if st.button("はい、取り消します", use_container_width=True, type="primary"):
-                    record_clock_in_cancellation()
-                    st.session_state.confirmation_action = None
-                    st.rerun()
-            with c2:
-                if st.button("いいえ", use_container_width=True):
-                    st.session_state.confirmation_action = None
+            
+            elif st.session_state.work_status == "working":
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    if st.button("退勤", key="clock_out", use_container_width=True, type="primary"):
+                        st.session_state.confirmation_action = 'clock_out'
+                        st.rerun()
+                with col2:
+                    if st.button("休憩開始", key="break_start", use_container_width=True):
+                        st.session_state.confirmation_action = 'break_start'
+                        st.rerun()
+                with col3:
+                    if st.button("出勤取り消し", key="cancel_clock_in", use_container_width=True):
+                        st.session_state.confirmation_action = 'cancel_clock_in'
+                        st.rerun()
+            elif st.session_state.work_status == "on_break":
+                if st.button("休憩終了", key="break_end", use_container_width=True):
+                    st.session_state.confirmation_action = 'break_end'
                     st.rerun()
     
     display_work_summary()
@@ -1141,28 +1155,32 @@ def record_clock_in():
     st.session_state.attendance_id = cursor.lastrowid
     st.session_state.work_status = "working"
     conn.close()
-    add_broadcast_message(f"✅ {st.session_state.user_name}さん、出勤しました。（{now.strftime('%H:%M')}）", st.session_state.user_company)
+    add_broadcast_message(st.session_state.user_id, f"✅ {st.session_state.user_name}さん、出勤しました。（{now.strftime('%H:%M')}）", st.session_state.user_company)
+    st.session_state.action_just_performed = True
 
 def record_clock_out():
     conn = get_db_connection()
     now = get_jst_now()
     conn.execute('UPDATE attendance SET clock_out = ? WHERE id = ?', (now.isoformat(), st.session_state.attendance_id))
     conn.commit()
-    att = conn.execute('SELECT * FROM attendance WHERE id = ?', (st.session_state.attendance_id,)).fetchone()
-    breaks = conn.execute('SELECT * FROM breaks WHERE attendance_id = ?', (st.session_state.attendance_id,)).fetchall()
+    conn.row_factory = sqlite3.Row
+    att = conn.execute('SELECT clock_in FROM attendance WHERE id = ?', (st.session_state.attendance_id,)).fetchone()
+    breaks = conn.execute('SELECT break_start, break_end FROM breaks WHERE attendance_id = ?', (st.session_state.attendance_id,)).fetchall()
     conn.close()
-    clock_in_time = datetime.fromisoformat(att['clock_in'])
-    total_work_seconds = (now - clock_in_time).total_seconds()
-    total_break_seconds = 0
-    for br in breaks:
-        if br['break_start'] and br['break_end']:
-            total_break_seconds += (datetime.fromisoformat(br['break_end']) - datetime.fromisoformat(br['break_start'])).total_seconds()
-    add_broadcast_message(f"🌙 {st.session_state.user_name}さん、退勤しました。（{now.strftime('%H:%M')}）", st.session_state.user_company)
-    if total_work_seconds > 8 * 3600 and total_break_seconds < 60 * 60:
-        add_message(st.session_state.user_id, "⚠️ **警告:** 8時間以上の勤務に対し、休憩が60分未満です。法律に基づき、適切な休憩時間を確保してください。")
-    elif total_work_seconds > 6 * 3600 and total_break_seconds < 45 * 60:
-        add_message(st.session_state.user_id, "⚠️ **警告:** 6時間以上の勤務に対し、休憩が45分未満です。法律に基づき、適切な休憩時間を確保してください。")
+    if att:
+        clock_in_time = datetime.fromisoformat(att['clock_in'])
+        total_work_seconds = (now - clock_in_time).total_seconds()
+        total_break_seconds = 0
+        for br in breaks:
+            if br['break_start'] and br['break_end']:
+                total_break_seconds += (datetime.fromisoformat(br['break_end']) - datetime.fromisoformat(br['break_start'])).total_seconds()
+        add_broadcast_message(st.session_state.user_id, f"🌙 {st.session_state.user_name}さん、退勤しました。（{now.strftime('%H:%M')}）", st.session_state.user_company)
+        if total_work_seconds > 8 * 3600 and total_break_seconds < 60 * 60:
+            add_message(st.session_state.user_id, "⚠️ **警告:** 8時間以上の勤務に対し、休憩が60分未満です。")
+        elif total_work_seconds > 6 * 3600 and total_break_seconds < 45 * 60:
+            add_message(st.session_state.user_id, "⚠️ **警告:** 6時間以上の勤務に対し、休憩が45分未満です。")
     st.session_state.work_status = "finished"
+    st.session_state.action_just_performed = True
 
 def record_break_start():
     conn = get_db_connection()
@@ -1173,6 +1191,7 @@ def record_break_start():
     st.session_state.break_id = cursor.lastrowid
     st.session_state.work_status = "on_break"
     conn.close()
+    st.session_state.action_just_performed = True
 
 def record_break_end():
     conn = get_db_connection()
@@ -1182,6 +1201,7 @@ def record_break_end():
     st.session_state.work_status = "working"
     st.session_state.break_id = None
     conn.close()
+    st.session_state.action_just_performed = True
 
 def record_clock_in_cancellation():
     if st.session_state.attendance_id:
@@ -1194,6 +1214,7 @@ def record_clock_in_cancellation():
         st.session_state.work_status = "not_started"
         st.session_state.attendance_id = None
         st.session_state.break_id = None
+        st.session_state.action_just_performed = True
 
 def display_work_summary():
     if st.session_state.get('attendance_id'):
