@@ -33,10 +33,8 @@ def add_message(user_id, content):
     conn.close()
 
 def add_attendance_log(user_id, content):
-    """出退勤の記録をデータベースに追加する関数"""
     conn = get_db_connection()
     now = get_jst_now().isoformat()
-    # user_id=0 は、これが特定の誰かに宛てたメッセージではなく、システム全体のログであることを示す
     conn.execute('INSERT INTO messages (user_id, sender_id, content, created_at, message_type) VALUES (?, ?, ?, ?, ?)',
                  (0, user_id, content, now, 'ATTENDANCE'))
     conn.commit()
@@ -362,13 +360,11 @@ def show_login_register_page():
                         st.error("その従業員IDは既に使用されています。")
 
 def show_timecard_page():
-    # アクション直後でなければ、DBから最新の状態を取得して同期する
     if not st.session_state.get('action_just_performed', False):
         get_today_attendance_status(st.session_state.user_id)
-    # 次回の実行のためにフラグをリセット
+        
     st.session_state.action_just_performed = False
     
-    # タイムカードページが開かれている時だけ自動更新
     if st.session_state.get('page') == "タイムカード":
         st_autorefresh(interval=1000, key="clock_refresh")
 
@@ -428,7 +424,6 @@ def show_timecard_page():
                     else:
                         st.session_state.clock_in_error = None
                         st.session_state.confirmation_action = 'clock_in'
-                    # st.rerun() # ★★★ この行を削除 ★★★
             
             elif st.session_state.work_status == "working":
                 col1, col2, col3 = st.columns(3)
@@ -569,8 +564,6 @@ def show_shift_management_page():
             "color": color, "id": shift['id'], "allDay": False
         })
 
-    # --- ★★★ ここから修正 ★★★ ---
-    # CSSでカレンダーの「最低限の高さ」を指定する
     st.markdown("""
         <style>
         .fc-view-harness {
@@ -578,8 +571,7 @@ def show_shift_management_page():
         }
         </style>
     """, unsafe_allow_html=True)
-    
-    # st.container(height=...) を削除し、直接カレンダーを呼び出す
+
     calendar_result = calendar(
         events=events,
         options={
@@ -588,12 +580,11 @@ def show_shift_management_page():
             "initialView": "dayGridMonth",
             "locale": "ja",
             "selectable": True,
-            "height": "auto" # 高さは自動調整に任せる
+            "height": "auto" 
         },
         custom_css=".fc-event-title { font-weight: 700; }",
         key=f"calendar_{st.session_state.calendar_date.year}_{st.session_state.calendar_date.month}"
     )
-    # --- ★★★ ここまで修正 ★★★ ---
 
     if isinstance(calendar_result, dict):
         clicked_date = None
@@ -762,9 +753,7 @@ def show_direct_message_page():
                     st.rerun()
             
 def show_messages_page():
-    # セッションの状態に応じて、表示する画面を切り替える
     if st.session_state.get('viewing_attendance_log'):
-        # --- 出退勤ログ画面 ---
         st.header("各従業員の出退勤状況")
         if st.button("＜ 全体メッセージに戻る"):
             st.session_state.viewing_attendance_log = False
@@ -789,10 +778,8 @@ def show_messages_page():
                 st.divider()
 
     else:
-        # --- 全体メッセージ画面（従来通り） ---
         st.header("全体メッセージ")
 
-        # ★★★ ボタンの順序を変更 ★★★
         if st.button("各従業員の出退勤状況", use_container_width=True):
             st.session_state.viewing_attendance_log = True
             st.rerun()
@@ -1021,8 +1008,7 @@ def get_work_hours_data(start_date, end_date):
             for br in breaks:
                 if br['break_start'] and br['break_end']:
                     break_seconds += (datetime.fromisoformat(br['break_end']) - datetime.fromisoformat(br['break_start'])).total_seconds()
-            
-            # ★★★ 修正点: 計算を「分」単位で行う ★★★
+
             actual_work_minutes = round((total_seconds - break_seconds) / 60)
             
             work_date = date.fromisoformat(att['work_date'])
@@ -1033,8 +1019,7 @@ def get_work_hours_data(start_date, end_date):
 
 def show_work_status_page():
     st.header("出勤状況")
-    
-    # --- 上部の月間サマリー表示 ---
+
     col1, col2, col3 = st.columns([1, 6, 1])
     with col1:
         if st.button("先月", key="status_prev"):
@@ -1184,7 +1169,6 @@ def record_clock_in():
     st.session_state.attendance_id = cursor.lastrowid
     st.session_state.work_status = "working"
     conn.close()
-    # ★★★ 修正点: add_broadcast_message から add_attendance_log に変更 ★★★
     log_content = f"✅ {st.session_state.user_name}さん、出勤しました。（{now.strftime('%H:%M')}）"
     add_attendance_log(st.session_state.user_id, log_content)
     st.session_state.action_just_performed = True
@@ -1205,8 +1189,7 @@ def record_clock_out():
         for br in breaks:
             if br['break_start'] and br['break_end']:
                 total_break_seconds += (datetime.fromisoformat(br['break_end']) - datetime.fromisoformat(br['break_start'])).total_seconds()
-        
-        # ★★★ 修正点: add_broadcast_message から add_attendance_log に変更 ★★★
+
         log_content = f"🌙 {st.session_state.user_name}さん、退勤しました。（{now.strftime('%H:%M')}）"
         add_attendance_log(st.session_state.user_id, log_content)
 
@@ -1401,15 +1384,13 @@ def main():
             "ユーザー登録": {"icon": "📝", "func": show_user_registration_page}
         }
 
-        # ボタンを横に並べてタブのように見せる
         cols = st.columns(len(ordered_page_keys))
         for i, page_key in enumerate(ordered_page_keys):
             info = page_definitions[page_key]
             label = f"{info['icon']} {page_key}"
             if info.get('unread', 0) > 0:
                 label += " 🔴"
-            
-            # 選択中のタブはprimary、それ以外はsecondaryのボタンにする
+
             button_type = "primary" if st.session_state.page == page_key else "secondary"
             if cols[i].button(label, use_container_width=True, type=button_type):
                 st.session_state.page = page_key
@@ -1417,7 +1398,6 @@ def main():
 
         st.divider()
 
-        # 現在選択されているページの関数を実行
         active_page_function = page_definitions[st.session_state.page]["func"]
         active_page_function()
 
