@@ -12,6 +12,7 @@ import re
 import base64
 import japanize_matplotlib
 import matplotlib.pyplot as plt
+import random
 from matplotlib.ticker import MaxNLocator
 
 from database import get_db_connection, init_db
@@ -1408,6 +1409,20 @@ def main():
                 for key in list(st.session_state.keys()):
                     del st.session_state[key]
                 st.rerun()
+
+            tips = [
+                "6時間を超える勤務には少なくとも45分の休憩が必要です。",
+                "8時間を超える勤務には少なくとも1時間の休憩が必要です。",
+                "休憩時間は労働時間の途中に与えなければなりません。",
+                "有給休暇は、6ヶ月間継続勤務し、全労働日の8割以上出勤した労働者に付与されます。",
+                "時間外労働（残業）には、割増賃金の支払いが必要です。"
+            ]
+            
+            selected_tip = random.choice(tips)
+            
+            st.info(f"**💡 今日の豆知識**\n\n{selected_tip}")
+            
+            st.divider()
 
 if __name__ == "__main__":
     main()
