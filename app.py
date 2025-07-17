@@ -982,19 +982,19 @@ def get_work_hours_data(start_date, end_date):
                 if br['break_start'] and br['break_end']:
                     break_seconds += (datetime.fromisoformat(br['break_end']) - datetime.fromisoformat(br['break_start'])).total_seconds()
             
-            # ★★★ 修正点: 計算を「時間」単位に戻す ★★★
-            actual_work_hours = (total_seconds - break_seconds) / 3600
+            # ★★★ 修正点: 計算を「分」単位で行う ★★★
+            actual_work_minutes = round((total_seconds - break_seconds) / 60)
             
             work_date = date.fromisoformat(att['work_date'])
-            if actual_work_hours > 0:
-                work_data[work_date] = actual_work_hours
+            if actual_work_minutes > 0:
+                work_data[work_date] = actual_work_minutes
     conn.close()
     return work_data
 
 def show_work_status_page():
     st.header("出勤状況")
     
-    # --- 上部の月間サマリー表示 ---
+    # --- 上部の月間サマリー表示（変更なし） ---
     col1, col2, col3 = st.columns([1, 6, 1])
     with col1:
         if st.button("先月", key="status_prev"):
@@ -1051,6 +1051,7 @@ def show_work_status_page():
     st.divider()
 
     st.subheader("📊 実働時間グラフ")
+    
     tab7, tab30, tab_year = st.tabs(["過去7日間", "当月", "当年"])
 
     with tab7:
@@ -1062,14 +1063,23 @@ def show_work_status_page():
             weekday_jp = ["月", "火", "水", "木", "金", "土", "日"]
             labels = [f"{d.day}日({weekday_jp[d.weekday()]})" for d in weekly_data.keys()]
             values = list(weekly_data.values())
+            
             fig, ax = plt.subplots()
             ax.bar(labels, values)
-            ax.set_ylabel('実働時間 (時間)')
-            ax.tick_params(axis='x', rotation=90) # X軸ラベルを縦向きに
-            ax.yaxis.set_major_locator(plt.MultipleLocator(1)) # Y軸の目盛りを1時間間隔に
+            ax.set_ylabel('実働時間 (分)')
+            ax.tick_params(axis='x', rotation=90)
+            
+            # ★★★ Y軸の目盛りを動的に設定 ★★★
+            max_val = max(values)
+            if max_val < 60: interval = 5   # 1時間未満 -> 5分間隔
+            elif max_val < 600: interval = 60  # 10時間未満 -> 1時間(60分)間隔
+            elif max_val < 6000: interval = 300 # 100時間未満 -> 5時間(300分)間隔
+            else: interval = 1500 # それ以上 -> 25時間(1500分)間隔
+            ax.yaxis.set_major_locator(plt.MultipleLocator(interval))
+
             plt.tight_layout()
             st.pyplot(fig, use_container_width=True)
-            plt.close(fig) # ★★★ 不要なグラフの表示を防ぐ
+            plt.close(fig)
         else:
             st.info("この期間のデータはありません。")
 
@@ -1083,12 +1093,19 @@ def show_work_status_page():
             values = list(monthly_data.values())
             fig, ax = plt.subplots()
             ax.bar(labels, values)
-            ax.set_ylabel('実働時間 (時間)')
-            ax.tick_params(axis='x', rotation=90) # X軸ラベルを縦向きに
-            ax.yaxis.set_major_locator(plt.MultipleLocator(1)) # Y軸の目盛りを1時間間隔に
+            ax.set_ylabel('実働時間 (分)')
+            ax.tick_params(axis='x', rotation=90)
+            
+            max_val = max(values)
+            if max_val < 60: interval = 5
+            elif max_val < 600: interval = 60
+            elif max_val < 6000: interval = 300
+            else: interval = 1500
+            ax.yaxis.set_major_locator(plt.MultipleLocator(interval))
+            
             plt.tight_layout()
             st.pyplot(fig, use_container_width=True)
-            plt.close(fig) # ★★★ 不要なグラフの表示を防ぐ
+            plt.close(fig)
         else:
             st.info("この期間のデータはありません。")
 
@@ -1108,12 +1125,19 @@ def show_work_status_page():
             values = all_months['実働時間'].values
             fig, ax = plt.subplots()
             ax.bar(labels, values)
-            ax.set_ylabel('実働時間 (時間)')
-            ax.tick_params(axis='x', rotation=90) # X軸ラベルを縦向きに
-            ax.yaxis.set_major_locator(plt.MultipleLocator(1)) # Y軸の目盛りを1時間間隔に
+            ax.set_ylabel('実働時間 (分)')
+            ax.tick_params(axis='x', rotation=90)
+            
+            max_val = max(values)
+            if max_val < 60: interval = 5
+            elif max_val < 600: interval = 60
+            elif max_val < 6000: interval = 300
+            else: interval = 1500
+            ax.yaxis.set_major_locator(plt.MultipleLocator(interval))
+
             plt.tight_layout()
             st.pyplot(fig, use_container_width=True)
-            plt.close(fig) # ★★★ 不要なグラフの表示を防ぐ
+            plt.close(fig)
         else:
             st.info("この期間のデータはありません。")
             
