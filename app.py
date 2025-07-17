@@ -474,8 +474,10 @@ def render_shift_edit_form(target_date):
             btn_col1, btn_col2, _ = st.columns([1, 1, 3])
             with btn_col1:
                 save_button = st.form_submit_button("登録・更新", use_container_width=True, type="primary")
+                st.rerun()
             with btn_col2:
                 delete_button = st.form_submit_button("削除", use_container_width=True)
+                st.rerun()
 
         if save_button:
             if start_datetime >= end_datetime:
