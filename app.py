@@ -984,8 +984,8 @@ def get_work_hours_data(start_date, end_date):
 
             actual_work_minutes = round((total_seconds - break_seconds) / 60)
             work_date = date.fromisoformat(att['work_date'])
-            if actual_work_hours > 0:
-                work_data[work_date] = actual_work_hours
+            if actual_work_minutes > 0:
+                work_data[work_date] = actual_work_minutes
     conn.close()
     return work_data
 
