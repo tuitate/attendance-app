@@ -1407,7 +1407,6 @@ def display_work_summary():
             now = get_jst_now()
             
             if now > reminder_time and st.session_state.get('last_clock_out_reminder_date') != today_str:
-                # --- ★★★ 修正点: add_message から add_attendance_log に変更 ★★★ ---
                 log_content = f"⏰ {st.session_state.user_name}さん、退勤予定時刻を15分過ぎています。速やかに退勤してください。"
                 add_attendance_log(st.session_state.user_id, log_content)
                 st.session_state.last_clock_out_reminder_date = today_st
@@ -1424,11 +1423,9 @@ def main():
     if not st.session_state.get('logged_in'):
         show_login_register_page()
     else:
-        # Get latest attendance status on each run for sync
         if st.session_state.get('user_id'):
             get_today_attendance_status(st.session_state.user_id)
 
-        # Get unread message counts
         conn = get_db_connection()
         conn.row_factory = sqlite3.Row
         current_user_id = st.session_state.user_id
@@ -1438,7 +1435,6 @@ def main():
         unread_dm_senders = conn.execute("SELECT DISTINCT u.id, u.name FROM messages m JOIN users u ON m.sender_id = u.id WHERE m.user_id = ? AND m.is_read = 0 AND m.message_type = 'DIRECT'", (current_user_id,)).fetchall()
         conn.close()
 
-        # Display new DM notifications
         if unread_dm_senders:
             with st.container(border=True):
                 st.info("🔔 新着メッセージがあります！")
@@ -1448,7 +1444,6 @@ def main():
                         st.session_state.page = "ダイレクトメッセージ"
                         st.rerun()
 
-        # Define pages and navigation
         ordered_page_keys = ["タイムカード", "シフト管理", "シフト表", "出勤状況", "全体メッセージ", "ダイレクトメッセージ", "ユーザー情報"]
         if st.session_state.user_position in ["社長", "役職者"]:
             ordered_page_keys.insert(1, "従業員情報")
@@ -1466,7 +1461,6 @@ def main():
             "ユーザー登録": {"icon": "📝", "func": show_user_registration_page}
         }
 
-        # Create button-based navigation
         cols = st.columns(len(ordered_page_keys))
         for i, page_key in enumerate(ordered_page_keys):
             info = page_definitions[page_key]
@@ -1481,11 +1475,9 @@ def main():
 
         st.divider()
 
-        # Run the function for the active page
         active_page_function = page_definitions[st.session_state.page]["func"]
         active_page_function()
 
-        # Sidebar
         with st.sidebar:
             st.title(" ")
             st.info(f"**名前:** {st.session_state.user_name}\n\n**従業員ID:** {get_user_employee_id(st.session_state.user_id)}")
