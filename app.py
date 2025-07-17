@@ -350,8 +350,10 @@ def show_login_register_page():
 def show_timecard_page():
     if not st.session_state.get('show_broadcast_dialog', False):
         st_autorefresh(interval=1000, key="clock_refresh")
+
     st.title(f"ようこそ、{st.session_state.user_name}さん")
     st.header(get_jst_now().strftime("%Y-%m-%d %H:%M:%S"))
+
     action_map = {
         'clock_in': {'message': '出勤しますか？', 'func': record_clock_in},
         'clock_out': {'message': '退勤しますか？', 'func': record_clock_out},
@@ -359,9 +361,12 @@ def show_timecard_page():
         'break_end': {'message': '休憩を終了しますか？', 'func': record_break_end},
         'cancel_clock_in': {'message': '本当に出勤を取り消しますか？\n\nこの操作は元に戻せません。', 'func': record_clock_in_cancellation}
     }
+
     button_placeholder = st.empty()
     with button_placeholder.container():
-        if st.session_state.get('clock_in_error'): st.warning(st.session_state.clock_in_error)
+        if st.session_state.get('clock_in_error'):
+            st.warning(st.session_state.clock_in_error)
+
         if st.session_state.get('confirmation_action'):
             action_details = action_map.get(st.session_state.confirmation_action)
             if action_details:
@@ -382,8 +387,15 @@ def show_timecard_page():
                 if st.button("出勤", key="clock_in", use_container_width=True):
                     conn = get_db_connection()
                     today_str = get_jst_now().date().isoformat()
-                    shift = conn.execute("SELECT start_datetime FROM shifts WHERE user_id = ? AND date(start_datetime) = ?", (st.session_state.user_id, today_str)).fetchone()
+                    
+                    # --- ★★★ ここから修正 ★★★ ---
+                    # より確実な方法でその日のシフトを検索します
+                    query = "SELECT start_datetime FROM shifts WHERE user_id = ? AND start_datetime LIKE ?"
+                    shift = conn.execute(query, (st.session_state.user_id, f"{today_str}%")).fetchone()
+                    # --- ★★★ ここまで修正 ★★★ ---
+
                     conn.close()
+                    
                     error_msg = None
                     if shift is None:
                         error_msg = "本日のシフトが登録されていません。先にシフトを登録してください。"
@@ -394,12 +406,15 @@ def show_timecard_page():
                         now = get_jst_now()
                         if now < earliest_clock_in:
                             error_msg = f"出勤できません。出勤時刻の5分前（{earliest_clock_in.strftime('%H:%M')}）から打刻できます。"
+                    
                     if error_msg:
                         st.session_state.clock_in_error = error_msg
                     else:
                         st.session_state.clock_in_error = None
                         st.session_state.confirmation_action = 'clock_in'
+                    
                     st.rerun()
+            
             elif st.session_state.work_status == "working":
                 col1, col2, col3 = st.columns(3)
                 with col1:
@@ -418,6 +433,7 @@ def show_timecard_page():
                 if st.button("休憩終了", key="break_end", use_container_width=True):
                     st.session_state.confirmation_action = 'break_end'
                     st.rerun()
+    
     display_work_summary()
 
 def show_shift_management_page():
