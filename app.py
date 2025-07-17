@@ -994,7 +994,7 @@ def get_work_hours_data(start_date, end_date):
 def show_work_status_page():
     st.header("出勤状況")
     
-    # --- 上部の月間サマリー表示（変更なし） ---
+    # --- 上部の月間サマリー表示 ---
     col1, col2, col3 = st.columns([1, 6, 1])
     with col1:
         if st.button("先月", key="status_prev"):
@@ -1051,7 +1051,6 @@ def show_work_status_page():
     st.divider()
 
     st.subheader("📊 実働時間グラフ")
-    
     tab7, tab30, tab_year = st.tabs(["過去7日間", "当月", "当年"])
 
     with tab7:
@@ -1063,20 +1062,16 @@ def show_work_status_page():
             weekday_jp = ["月", "火", "水", "木", "金", "土", "日"]
             labels = [f"{d.day}日({weekday_jp[d.weekday()]})" for d in weekly_data.keys()]
             values = list(weekly_data.values())
-            
             fig, ax = plt.subplots()
             ax.bar(labels, values)
             ax.set_ylabel('実働時間 (分)')
             ax.tick_params(axis='x', rotation=90)
-            
-            # ★★★ Y軸の目盛りを動的に設定 ★★★
-            max_val = max(values)
-            if max_val < 60: interval = 5   # 1時間未満 -> 5分間隔
-            elif max_val < 600: interval = 60  # 10時間未満 -> 1時間(60分)間隔
-            elif max_val < 6000: interval = 300 # 100時間未満 -> 5時間(300分)間隔
-            else: interval = 1500 # それ以上 -> 25時間(1500分)間隔
+            max_val = max(values) if values else 0
+            if max_val < 60: interval = 5
+            elif max_val < 600: interval = 60
+            elif max_val < 6000: interval = 300
+            else: interval = 1500
             ax.yaxis.set_major_locator(plt.MultipleLocator(interval))
-
             plt.tight_layout()
             st.pyplot(fig, use_container_width=True)
             plt.close(fig)
@@ -1095,14 +1090,12 @@ def show_work_status_page():
             ax.bar(labels, values)
             ax.set_ylabel('実働時間 (分)')
             ax.tick_params(axis='x', rotation=90)
-            
-            max_val = max(values)
+            max_val = max(values) if values else 0
             if max_val < 60: interval = 5
             elif max_val < 600: interval = 60
             elif max_val < 6000: interval = 300
             else: interval = 1500
             ax.yaxis.set_major_locator(plt.MultipleLocator(interval))
-            
             plt.tight_layout()
             st.pyplot(fig, use_container_width=True)
             plt.close(fig)
@@ -1110,16 +1103,29 @@ def show_work_status_page():
             st.info("この期間のデータはありません。")
 
     with tab_year:
+        st.write("今年の月別実働時間を表示します。")
         today = date.today()
         start_of_year = today.replace(month=1, day=1)
         end_of_year = today.replace(month=12, day=31)
         yearly_data = get_work_hours_data(start_of_year, end_of_year)
         
+        # --- ★★★ ここからデバッグコードを追加 ★★★ ---
+        st.write("--- デバッグ情報 ---")
+        st.write("▼ 年間の日別データ（分）:")
+        st.write(yearly_data)
+        # --- ★★★ ここまで ★★★ ---
+
         if any(v > 0 for v in yearly_data.values()):
             monthly_totals_dict = {i: 0 for i in range(1, 13)}
             for day, minutes in yearly_data.items():
                 if minutes > 0:
                     monthly_totals_dict[day.month] += minutes
+            
+            # --- ★★★ ここからデバッグコードを追加 ★★★ ---
+            st.write("▼ 月別集計データ（分）:")
+            st.write(monthly_totals_dict)
+            st.write("--- デバッグ終了 ---")
+            # --- ★★★ ここまで ★★★ ---
 
             labels = [f"{m}月" for m in monthly_totals_dict.keys()]
             values = list(monthly_totals_dict.values())
