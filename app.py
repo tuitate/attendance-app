@@ -350,89 +350,79 @@ def show_login_register_page():
                         st.error("その従業員IDは既に使用されています。")
 
 def show_timecard_page():
-    # --- ★★★ 修正点: 競合の原因となっていたこの行を削除 ★★★ ---
-    # get_today_attendance_status(st.session_state.user_id)
-    
     # タイムカードページが開かれている時だけ自動更新
     if st.session_state.get('page') == "タイムカード":
+        get_today_attendance_status(st.session_state.user_id)
         st_autorefresh(interval=1000, key="clock_refresh")
 
     st.title(f"ようこそ、{st.session_state.user_name}さん")
     st.header(get_jst_now().strftime("%Y-%m-%d %H:%M:%S"))
 
-    action_map = {
-        'clock_in': {'message': '出勤しますか？', 'func': record_clock_in},
-        'clock_out': {'message': '退勤しますか？', 'func': record_clock_out},
-        'break_start': {'message': '休憩を開始しますか？', 'func': record_break_start},
-        'break_end': {'message': '休憩を終了しますか？', 'func': record_break_end},
-        'cancel_clock_in': {'message': '本当に出勤を取り消しますか？\n\nこの操作は元に戻せません。', 'func': record_clock_in_cancellation}
-    }
-
+    # ★★★ 確認画面の仕組みを全体的に削除・簡略化 ★★★
     button_placeholder = st.empty()
     with button_placeholder.container():
-        if st.session_state.get('clock_in_error'):
-            st.warning(st.session_state.clock_in_error)
+        if st.session_state.work_status == "not_started":
+            if st.button("出勤", key="clock_in", use_container_width=True):
+                conn = get_db_connection()
+                today_str = get_jst_now().date().isoformat()
+                query = "SELECT start_datetime FROM shifts WHERE user_id = ? AND start_datetime LIKE ?"
+                shift = conn.execute(query, (st.session_state.user_id, f"{today_str}%")).fetchone()
+                conn.close()
+                
+                if shift is None:
+                    st.warning("本日のシフトが登録されていません。先にシフトを登録してください。")
+                    st.stop()
+                
+                naive_start_dt = datetime.fromisoformat(shift[0])
+                start_dt = naive_start_dt.replace(tzinfo=JST)
+                earliest_clock_in = start_dt - timedelta(minutes=5)
+                now = get_jst_now()
 
-        if st.session_state.get('confirmation_action'):
-            action_details = action_map.get(st.session_state.confirmation_action)
-            if action_details:
-                st.warning(action_details['message'])
-                col1, col2 = st.columns(2)
-                with col1:
-                    if st.button("はい", use_container_width=True, type="primary"):
-                        action_details['func']()
-                        st.session_state.confirmation_action = None
-                        st.session_state.clock_in_error = None
-                        st.rerun() # 動作を確定させるためrerunを戻します
-                with col2:
-                    if st.button("いいえ", use_container_width=True):
-                        st.session_state.confirmation_action = None
-                        st.rerun() # 動作を確定させるためrerunを戻します
-        else:
-            # work_statusに応じたボタン表示ロジック（変更なし）
-            if st.session_state.work_status == "not_started":
-                if st.button("出勤", key="clock_in", use_container_width=True):
-                    conn = get_db_connection()
-                    today_str = get_jst_now().date().isoformat()
-                    query = "SELECT start_datetime FROM shifts WHERE user_id = ? AND start_datetime LIKE ?"
-                    shift = conn.execute(query, (st.session_state.user_id, f"{today_str}%")).fetchone()
-                    conn.close()
-                    
-                    error_msg = None
-                    if shift is None:
-                        error_msg = "本日のシフトが登録されていません。先にシフトを登録してください。"
-                    else:
-                        naive_start_dt = datetime.fromisoformat(shift[0])
-                        start_dt = naive_start_dt.replace(tzinfo=JST)
-                        earliest_clock_in = start_dt - timedelta(minutes=5)
-                        now = get_jst_now()
-                        if now < earliest_clock_in:
-                            error_msg = f"出勤できません。出勤時刻の5分前（{earliest_clock_in.strftime('%H:%M')}）から打刻できます。"
-                    
-                    if error_msg:
-                        st.session_state.clock_in_error = error_msg
-                    else:
-                        st.session_state.clock_in_error = None
-                        st.session_state.confirmation_action = 'clock_in'
+                if now < earliest_clock_in:
+                    st.warning(f"出勤できません。出勤時刻の5分前（{earliest_clock_in.strftime('%H:%M')}）から打刻できます。")
+                    st.stop()
+                
+                # 確認なしで直接実行
+                record_clock_in()
+                st.toast("出勤しました。")
+                st.rerun()
+        
+        elif st.session_state.work_status == "working":
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                if st.button("退勤", key="clock_out", use_container_width=True, type="primary"):
+                    record_clock_out()
+                    st.toast("退勤しました。")
                     st.rerun()
-            
-            elif st.session_state.work_status == "working":
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    if st.button("退勤", key="clock_out", use_container_width=True, type="primary"):
-                        st.session_state.confirmation_action = 'clock_out'
-                        st.rerun()
-                with col2:
-                    if st.button("休憩開始", key="break_start", use_container_width=True):
-                        st.session_state.confirmation_action = 'break_start'
-                        st.rerun()
-                with col3:
-                    if st.button("出勤取り消し", key="cancel_clock_in", use_container_width=True):
-                        st.session_state.confirmation_action = 'cancel_clock_in'
-                        st.rerun()
-            elif st.session_state.work_status == "on_break":
-                if st.button("休憩終了", key="break_end", use_container_width=True):
-                    st.session_state.confirmation_action = 'break_end'
+            with col2:
+                if st.button("休憩開始", key="break_start", use_container_width=True):
+                    record_break_start()
+                    st.toast("休憩を開始しました。")
+                    st.rerun()
+            with col3:
+                # 出勤取り消しは危険な操作なので、確認を残します
+                if st.button("出勤取り消し", key="cancel_clock_in", use_container_width=True):
+                    st.session_state.confirmation_action = 'cancel_clock_in'
+                    st.rerun()
+
+        elif st.session_state.work_status == "on_break":
+            if st.button("休憩終了", key="break_end", use_container_width=True):
+                record_break_end()
+                st.toast("休憩を終了しました。")
+                st.rerun()
+
+        # 出勤取り消しの確認画面だけは残す
+        if st.session_state.get('confirmation_action') == 'cancel_clock_in':
+            st.warning("本当に出勤を取り消しますか？\n\nこの操作は元に戻せません。")
+            c1, c2 = st.columns(2)
+            with c1:
+                if st.button("はい、取り消します", use_container_width=True, type="primary"):
+                    record_clock_in_cancellation()
+                    st.session_state.confirmation_action = None
+                    st.rerun()
+            with c2:
+                if st.button("いいえ", use_container_width=True):
+                    st.session_state.confirmation_action = None
                     st.rerun()
     
     display_work_summary()
