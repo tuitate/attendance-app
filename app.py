@@ -1353,30 +1353,37 @@ def handle_page_change():
                 
 def main():
     st.set_page_config(layout="wide")
-
     init_db()
     init_session_state()
 
     if not st.session_state.get('logged_in'):
         show_login_register_page()
-    
     else:
+        # Get latest attendance status on each run for sync
+        if st.session_state.get('user_id'):
+            get_today_attendance_status(st.session_state.user_id)
+
+        # Get unread message counts
         conn = get_db_connection()
+        conn.row_factory = sqlite3.Row
         current_user_id = st.session_state.user_id
         broadcast_unread_count = conn.execute("SELECT COUNT(*) FROM messages WHERE user_id = ? AND is_read = 0 AND message_type IN ('BROADCAST', 'SYSTEM')", (current_user_id,)).fetchone()[0]
         dm_unread_count_row = conn.execute("SELECT COUNT(*) FROM messages WHERE user_id = ? AND is_read = 0 AND message_type = 'DIRECT'", (current_user_id,)).fetchone()
         dm_unread_count = dm_unread_count_row[0] if dm_unread_count_row else 0
         unread_dm_senders = conn.execute("SELECT DISTINCT u.id, u.name FROM messages m JOIN users u ON m.sender_id = u.id WHERE m.user_id = ? AND m.is_read = 0 AND m.message_type = 'DIRECT'", (current_user_id,)).fetchall()
         conn.close()
-    
+
+        # Display new DM notifications
         if unread_dm_senders:
             with st.container(border=True):
                 st.info("🔔 新着メッセージがあります！")
                 for sender in unread_dm_senders:
                     if st.button(f"📩 **{sender['name']}さん**から新しいメッセージが届いています。", key=f"dm_notification_{sender['id']}", use_container_width=True):
                         st.session_state.dm_selected_user_id = sender['id']
-                        st.info("下の「DM」タブを開いてください。")
+                        st.session_state.page = "ダイレクトメッセージ"
+                        st.rerun()
 
+        # Define pages and navigation
         ordered_page_keys = ["タイムカード", "シフト管理", "シフト表", "出勤状況", "全体メッセージ", "ダイレクトメッセージ", "ユーザー情報"]
         if st.session_state.user_position in ["社長", "役職者"]:
             ordered_page_keys.insert(1, "従業員情報")
@@ -1394,13 +1401,14 @@ def main():
             "ユーザー登録": {"icon": "📝", "func": show_user_registration_page}
         }
 
+        # Create button-based navigation
         cols = st.columns(len(ordered_page_keys))
         for i, page_key in enumerate(ordered_page_keys):
             info = page_definitions[page_key]
             label = f"{info['icon']} {page_key}"
             if info.get('unread', 0) > 0:
                 label += " 🔴"
-
+            
             button_type = "primary" if st.session_state.page == page_key else "secondary"
             if cols[i].button(label, use_container_width=True, type=button_type):
                 st.session_state.page = page_key
@@ -1408,20 +1416,18 @@ def main():
 
         st.divider()
 
+        # Run the function for the active page
         active_page_function = page_definitions[st.session_state.page]["func"]
         active_page_function()
 
-       with st.sidebar:
+        # Sidebar
+        with st.sidebar:
             st.title(" ")
             st.info(f"**名前:** {st.session_state.user_name}\n\n**従業員ID:** {get_user_employee_id(st.session_state.user_id)}")
-
             st.divider()
-
             if st.session_state.daily_tip:
                 st.info(f"**💡 今日の豆知識**\n\n{st.session_state.daily_tip}")
-            
             st.divider()
-
             if st.button("ログアウト", use_container_width=True):
                 for key in list(st.session_state.keys()):
                     del st.session_state[key]
