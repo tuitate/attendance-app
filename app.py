@@ -1320,7 +1320,13 @@ def main():
 
     if not st.session_state.get('logged_in'):
         show_login_register_page()
-    else:
+        else:
+        # --- ★★★ ここから修正 ★★★ ---
+        # 毎回データベースから最新の勤怠状況を読み込むことで同期を実現
+        if st.session_state.get('user_id'):
+            get_today_attendance_status(st.session_state.user_id)
+        # --- ★★★ ここまで修正 ★★★ ---
+
         conn = get_db_connection()
         current_user_id = st.session_state.user_id
         broadcast_unread_count = conn.execute("SELECT COUNT(*) FROM messages WHERE user_id = ? AND is_read = 0 AND message_type IN ('BROADCAST', 'SYSTEM')", (current_user_id,)).fetchone()[0]
@@ -1328,7 +1334,7 @@ def main():
         dm_unread_count = dm_unread_count_row[0] if dm_unread_count_row else 0
         unread_dm_senders = conn.execute("SELECT DISTINCT u.id, u.name FROM messages m JOIN users u ON m.sender_id = u.id WHERE m.user_id = ? AND m.is_read = 0 AND m.message_type = 'DIRECT'", (current_user_id,)).fetchall()
         conn.close()
-
+    
         if unread_dm_senders:
             with st.container(border=True):
                 st.info("🔔 新着メッセージがあります！")
