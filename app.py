@@ -509,12 +509,14 @@ def render_shift_edit_form(target_date):
 def show_shift_management_page():
     st.header("シフト管理")
 
+    # 編集フォーム表示中は、カレンダーは表示しない
     if st.session_state.get('editing_date'):
         render_shift_edit_form(st.session_state.editing_date)
         return
 
-    st.info("カレンダーの日付または登録済みのシフトをクリックして編集フォームを開きます。")
+    st.info("カレンダーの日付をクリックしてシフトを登録・編集できます。")
 
+    # 月のナビゲーション
     col1, col2 = st.columns([3, 2])
     with col1:
         st.subheader(st.session_state.calendar_date.strftime('%Y年 %m月'), anchor=False, divider='blue')
@@ -529,61 +531,66 @@ def show_shift_management_page():
                 st.session_state.calendar_date += relativedelta(months=1)
                 st.rerun()
 
+    # --- ▼▼▼ ここからカレンダーの自作ロジック ▼▼▼ ---
+
+    # 当該月のシフト情報を先にすべて取得
     conn = get_db_connection()
     conn.row_factory = sqlite3.Row
-    shifts = conn.execute('SELECT id, start_datetime, end_datetime FROM shifts WHERE user_id = ?', (st.session_state.user_id,)).fetchall()
+    year = st.session_state.calendar_date.year
+    month = st.session_state.calendar_date.month
+    first_day = date(year, month, 1)
+    last_day = (first_day + relativedelta(months=1)) - timedelta(days=1)
+    
+    shifts_records = conn.execute(
+        "SELECT start_datetime, end_datetime FROM shifts WHERE user_id = ? AND date(start_datetime) BETWEEN ? AND ?",
+        (st.session_state.user_id, first_day.isoformat(), last_day.isoformat())
+    ).fetchall()
     conn.close()
 
-    events = []
-    for shift in shifts:
+    # 日付をキーにしたシフト情報の辞書を作成
+    shifts_by_date = {}
+    for shift in shifts_records:
         start_dt = datetime.fromisoformat(shift['start_datetime'])
         end_dt = datetime.fromisoformat(shift['end_datetime'])
+        shift_date = start_dt.date()
         title = f"{start_dt.strftime('%H:%M')}~{end_dt.strftime('%H:%M')}"
         if start_dt.time() >= time(22, 0) or end_dt.time() <= time(5, 0):
-            title += " (夜)"
-        color = "#FF6347" if (start_dt.time() >= time(22, 0) or end_dt.time() <= time(5, 0)) else "#1E90FF"
-        events.append({
-            "title": title, "start": start_dt.isoformat(), "end": end_dt.isoformat(),
-            "color": color, "id": shift['id'], "allDay": False
-        })
+            title += "<br>(夜)" # 改行して表示
+        shifts_by_date[shift_date] = title
 
-    st.markdown("""
-        <style>
-        .fc-view-harness {
-            min-height: 700px !important;
-        }
-        </style>
-    """, unsafe_allow_html=True)
+    # 曜日のヘッダーを表示
+    days_of_week = ["月", "火", "水", "木", "金", "土", "日"]
+    cols = st.columns(7)
+    for col, day in zip(cols, days_of_week):
+        col.markdown(f"<p style='text-align: center; font-weight: bold;'>{day}</p>", unsafe_allow_html=True)
+    st.divider()
 
-    calendar_result = calendar(
-        events=events,
-        options={
-            "headerToolbar": False,
-            "initialDate": st.session_state.calendar_date.isoformat(),
-            "initialView": "dayGridMonth",
-            "locale": "ja",
-            "selectable": True,
-            "height": "auto"
-        },
-        custom_css=".fc-event-title { font-weight: 700; }",
-        key=f"calendar_{st.session_state.calendar_date.year}_{st.session_state.calendar_date.month}"
-    )
+    # カレンダーグリッドを生成
+    month_calendar = py_calendar.monthcalendar(year, month)
 
-    if isinstance(calendar_result, dict):
-        clicked_date = None
-        if 'dateClick' in calendar_result:
-            utc_dt = datetime.fromisoformat(calendar_result['dateClick']['date'].replace('Z', '+00:00'))
-            clicked_date = utc_dt.astimezone(JST).date()
-        elif 'eventClick' in calendar_result:
-            start_str = calendar_result['eventClick']['event']['start'].split('T')[0]
-            clicked_date = date.fromisoformat(start_str)
-        
-        if clicked_date:
-            if clicked_date < date.today():
-                st.warning("過去の日付のシフトは変更できません。")
-            else:
-                st.session_state.editing_date = clicked_date
-                st.rerun()
+    for week in month_calendar:
+        cols = st.columns(7)
+        for i, day_num in enumerate(week):
+            with cols[i]:
+                if day_num == 0:
+                    st.write("") # 月の範囲外の日付は空白
+                else:
+                    current_date = date(year, month, day_num)
+                    content = f"**{day_num}**" # 日付を太字で表示
+                    
+                    # その日のシフト情報を取得
+                    shift_info = shifts_by_date.get(current_date)
+                    if shift_info:
+                        content += f"<br><small>{shift_info}</small>" # シフト情報を追加
+                    
+                    # 過去の日付はクリックできないようにする
+                    is_disabled = current_date < date.today()
+
+                    # st.expander を使ってクリック可能な領域を作成
+                    with st.expander(label=content, expanded=True):
+                        if st.button(" ", key=f"day_{year}_{month}_{day_num}", use_container_width=True, disabled=is_disabled):
+                            st.session_state.editing_date = current_date
+                            st.rerun()
                 
 def show_shift_table_page():
     st.header("月間シフト表")
