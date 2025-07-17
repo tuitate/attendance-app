@@ -350,7 +350,10 @@ def show_login_register_page():
                         st.error("その従業員IDは既に使用されています。")
 
 def show_timecard_page():
+    # --- ★★★ 修正点: 競合の原因となっていたこの行を削除 ★★★ ---
+    # get_today_attendance_status(st.session_state.user_id)
     
+    # タイムカードページが開かれている時だけ自動更新
     if st.session_state.get('page') == "タイムカード":
         st_autorefresh(interval=1000, key="clock_refresh")
 
@@ -380,12 +383,13 @@ def show_timecard_page():
                         action_details['func']()
                         st.session_state.confirmation_action = None
                         st.session_state.clock_in_error = None
-                        st.rerun()
+                        st.rerun() # 動作を確定させるためrerunを戻します
                 with col2:
                     if st.button("いいえ", use_container_width=True):
                         st.session_state.confirmation_action = None
-                        st.rerun()
+                        st.rerun() # 動作を確定させるためrerunを戻します
         else:
+            # work_statusに応じたボタン表示ロジック（変更なし）
             if st.session_state.work_status == "not_started":
                 if st.button("出勤", key="clock_in", use_container_width=True):
                     conn = get_db_connection()
