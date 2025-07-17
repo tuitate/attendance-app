@@ -10,6 +10,8 @@ from dateutil.relativedelta import relativedelta
 from streamlit_autorefresh import st_autorefresh
 import re
 import base64
+import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
 
 from database import get_db_connection, init_db
 
@@ -1050,14 +1052,14 @@ def show_work_status_page():
     # --- ★★★ ここからグラフ表示のロジックを全面的に修正 ★★★ ---
     st.subheader("📊 実働時間グラフ")
     
-    # Altairチャートを作成するヘルパー関数
-    def create_altair_chart(df, x_title, y_title):
-        chart = alt.Chart(df).mark_bar().encode(
-            x=alt.X('index:N', title=x_title, axis=alt.Axis(labelAngle=-90)),
-            y=alt.Y('実働時間:Q', title=y_title, axis=alt.Axis(format='d')),
-            tooltip=[alt.Tooltip('index', title=x_title), alt.Tooltip('実働時間', title=y_title)]
-        ).interactive(bind_y=False) # Y軸のズームを無効化
-        return chart
+    try:
+        plt.rcParams['font.family'] = 'Hiragino Maru Gothic Pro' # Mac
+    except:
+        try:
+            plt.rcParams['font.family'] = 'Yu Gothic' # Windows
+        except:
+            plt.rcParams['font.family'] = 'sans-serif'
+
 
     tab7, tab30, tab_year = st.tabs(["過去7日間", "当月", "当年"])
 
@@ -1068,13 +1070,17 @@ def show_work_status_page():
         weekly_data = get_work_hours_data(start_of_week, end_of_week)
         
         if any(v > 0 for v in weekly_data.values()):
-            df_week = pd.DataFrame(list(weekly_data.values()), index=list(weekly_data.keys()), columns=['実働時間'])
             weekday_jp = ["月", "火", "水", "木", "金", "土", "日"]
-            df_week.index = [f"{d.strftime('%d日')}({weekday_jp[d.weekday()]})" for d in df_week.index]
-            df_week.reset_index(inplace=True) # Altairのためにインデックスを列に変換
-            
-            chart = create_altair_chart(df_week, "日付", "実働時間 (時間)")
-            st.altair_chart(chart, use_container_width=True)
+            labels = [f"{d.day}日({weekday_jp[d.weekday()]})" for d in weekly_data.keys()]
+            values = list(weekly_data.values())
+
+            fig, ax = plt.subplots()
+            ax.bar(labels, values)
+            ax.set_ylabel('実働時間 (時間)')
+            ax.tick_params(axis='x', rotation=90) # X軸ラベルを縦向きに
+            ax.yaxis.set_major_locator(MaxNLocator(integer=True, min_n_ticks=1)) # Y軸を整数に
+            plt.tight_layout()
+            st.pyplot(fig)
         else:
             st.info("この期間のデータはありません。")
 
@@ -1085,12 +1091,19 @@ def show_work_status_page():
         monthly_data = get_work_hours_data(start_of_month, end_of_month)
 
         if any(v > 0 for v in monthly_data.values()):
-            df_month = pd.DataFrame(list(monthly_data.values()), index=list(monthly_data.keys()), columns=['実働時間'])
-            df_month.index = [f"{d.day}日" for d in df_month.index] # 「日」を追加
-            df_month.reset_index(inplace=True)
-
-            chart = create_altair_chart(df_month, "日", "実働時間 (時間)")
-            st.altair_chart(chart, use_container_width=True)
+            labels = [f"{d.day}日" for d in monthly_data.keys()]
+            values = list(monthly_data.values())
+            
+            fig, ax = plt.subplots()
+            ax.bar(labels, values)
+            ax.set_ylabel('実働時間 (時間)')
+            # X軸の目盛りを10日、20日、30日に設定
+            tick_positions = [i for i, label in enumerate(labels) if label in ['10日', '20日', '30日']]
+            ax.set_xticks(tick_positions)
+            ax.tick_params(axis='x', rotation=90)
+            ax.yaxis.set_major_locator(MaxNLocator(integer=True, min_n_ticks=1))
+            plt.tight_layout()
+            st.pyplot(fig)
         else:
             st.info("この期間のデータはありません。")
 
@@ -1104,17 +1117,24 @@ def show_work_status_page():
             df_year = pd.DataFrame(list(yearly_data.items()), columns=['日付', '実働時間'])
             df_year['月'] = df_year['日付'].apply(lambda d: d.month)
             monthly_total = df_year.groupby('月')['実働時間'].sum()
+            
             all_months = pd.DataFrame(index=range(1, 13))
             all_months['実働時間'] = monthly_total
             all_months.fillna(0, inplace=True)
-            all_months.index = [f"{m}月" for m in all_months.index]
-            all_months.reset_index(inplace=True)
             
-            chart = create_altair_chart(all_months, "月", "実働時間 (時間)")
-            st.altair_chart(chart, use_container_width=True)
+            labels = [f"{m}月" for m in all_months.index]
+            values = all_months['実働時間'].values
+
+            fig, ax = plt.subplots()
+            ax.bar(labels, values)
+            ax.set_ylabel('実働時間 (時間)')
+            ax.tick_params(axis='x', rotation=90)
+            ax.yaxis.set_major_locator(MaxNLocator(integer=True, min_n_ticks=1))
+            plt.tight_layout()
+            st.pyplot(fig)
         else:
             st.info("この期間のデータはありません。")
-
+            
 def record_clock_in():
     conn = get_db_connection()
     now = get_jst_now()
