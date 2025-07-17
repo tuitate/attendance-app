@@ -1108,6 +1108,24 @@ def show_work_status_page():
         start_of_year = today.replace(month=1, day=1)
         end_of_year = today.replace(month=12, day=31)
         yearly_data = get_work_hours_data(start_of_year, end_of_year)
+        
+        # --- ★★★ ここからデバッグコードを追加 ★★★ ---
+        st.write("--- デバッグ情報 ---")
+        st.write("▼ 年間の日別データ（分）:")
+        st.write(yearly_data)
+        # --- ★★★ ここまで ★★★ ---
+
+        if any(v > 0 for v in yearly_data.values()):
+            monthly_totals_dict = {i: 0 for i in range(1, 13)}
+            for day, minutes in yearly_data.items():
+                if minutes > 0:
+                    monthly_totals_dict[day.month] += minutes
+            
+            # --- ★★★ ここからデバッグコードを追加 ★★★ ---
+            st.write("▼ 月別集計データ（分）:")
+            st.write(monthly_totals_dict)
+            st.write("--- デバッグ終了 ---")
+            # --- ★★★ ここまで ★★★ ---
 
             labels = [f"{m}月" for m in monthly_totals_dict.keys()]
             values = list(monthly_totals_dict.values())
