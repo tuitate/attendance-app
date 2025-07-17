@@ -379,11 +379,9 @@ def show_timecard_page():
                         action_details['func']()
                         st.session_state.confirmation_action = None
                         st.session_state.clock_in_error = None
-                        st.rerun()
                 with col2:
                     if st.button("いいえ", use_container_width=True):
                         st.session_state.confirmation_action = None
-                        st.rerun()
         else:
             if st.session_state.work_status == "not_started":
                 if st.button("出勤", key="clock_in", use_container_width=True):
