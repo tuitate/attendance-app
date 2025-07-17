@@ -981,7 +981,7 @@ def get_work_hours_data(start_date, end_date):
                 if br['break_start'] and br['break_end']:
                     break_seconds += (datetime.fromisoformat(br['break_end']) - datetime.fromisoformat(br['break_start'])).total_seconds()
 
-            actual_work_hours = round((total_seconds - break_seconds) / 3600)
+            actual_work_hours = (total_seconds - break_seconds) / 3600
             work_date = date.fromisoformat(att['work_date'])
             if actual_work_hours > 0:
                 work_data[work_date] = actual_work_hours
