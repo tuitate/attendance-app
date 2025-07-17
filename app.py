@@ -377,7 +377,6 @@ def show_timecard_page():
         if st.session_state.get('clock_in_error'):
             st.warning(st.session_state.clock_in_error)
 
-        # ★★★ 確認画面のロジックを復活 ★★★
         if st.session_state.get('confirmation_action'):
             action_details = action_map.get(st.session_state.confirmation_action)
             if action_details:
@@ -418,7 +417,7 @@ def show_timecard_page():
                     else:
                         st.session_state.clock_in_error = None
                         st.session_state.confirmation_action = 'clock_in'
-                    st.rerun()
+                    # st.rerun() # ★★★ この行を削除 ★★★
             
             elif st.session_state.work_status == "working":
                 col1, col2, col3 = st.columns(3)
