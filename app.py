@@ -14,8 +14,15 @@ import japanize_matplotlib
 import matplotlib.pyplot as plt
 import random
 from matplotlib.ticker import MaxNLocator
-
 from database import get_db_connection, init_db
+
+TIPS = [
+    "6時間を超える勤務には少なくとも45分の休憩が必要です。",
+    "8時間を超える勤務には少なくとも1時間の休憩が必要です。",
+    "休憩時間は労働時間の途中に与えなければなりません。",
+    "有給休暇は、6ヶ月間継続勤務し、全労働日の8割以上出勤した労働者に付与されます。",
+    "時間外労働（残業）には、割増賃金の支払いが必要です。"
+]
 
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
@@ -181,6 +188,7 @@ def init_session_state():
         'show_broadcast_dialog': False,
         'action_just_performed': False,
         'viewing_attendance_log': False, 
+        'daily_tip': None,
     }
     for key, default_value in defaults.items():
         if key not in st.session_state:
@@ -321,6 +329,7 @@ def show_login_register_page():
                         st.session_state.user_company = user['company']
                         st.session_state.user_position = user['position']
                         get_today_attendance_status(user['id'])
+                        st.session_state.daily_tip = random.choice(TIPS)
                         st.rerun()
                     else:
                         st.error("従業員IDまたはパスワードが正しくありません。")
@@ -1402,27 +1411,21 @@ def main():
         active_page_function = page_definitions[st.session_state.page]["func"]
         active_page_function()
 
-        with st.sidebar:
+       with st.sidebar:
             st.title(" ")
             st.info(f"**名前:** {st.session_state.user_name}\n\n**従業員ID:** {get_user_employee_id(st.session_state.user_id)}")
+
+            st.divider()
+
+            if st.session_state.daily_tip:
+                st.info(f"**💡 今日の豆知識**\n\n{st.session_state.daily_tip}")
+            
+            st.divider()
+
             if st.button("ログアウト", use_container_width=True):
                 for key in list(st.session_state.keys()):
                     del st.session_state[key]
                 st.rerun()
-
-            tips = [
-                "6時間を超える勤務には少なくとも45分の休憩が必要です。",
-                "8時間を超える勤務には少なくとも1時間の休憩が必要です。",
-                "休憩時間は労働時間の途中に与えなければなりません。",
-                "有給休暇は、6ヶ月間継続勤務し、全労働日の8割以上出勤した労働者に付与されます。",
-                "時間外労働（残業）には、割増賃金の支払いが必要です。"
-            ]
-            
-            selected_tip = random.choice(tips)
-            
-            st.info(f"**💡 今日の豆知識**\n\n{selected_tip}")
-            
-            st.divider()
 
 if __name__ == "__main__":
     main()
