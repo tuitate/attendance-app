@@ -996,13 +996,19 @@ def show_employee_information_page():
                     st.write(f"**従業員ID:** {user['employee_id']}")
                     st.write(f"**登録日時:** {datetime.fromisoformat(user['created_at']).strftime('%Y年%m月%d日 %H:%M')}")
 
-                    if user['id'] != st.session_state.user_id:
+                    show_delete_button = True
+                    # 自分自身は削除できない
+                    if user['id'] == st.session_state.user_id:
+                        show_delete_button = False
+                    # ログイン中のユーザーが「役職者」で、対象が「社長」の場合は削除できない
+                    if st.session_state.user_position == "役職者" and user['position'] == "社長":
+                        show_delete_button = False
+                    
+                    if show_delete_button:
                         st.divider()
-                        
                         if st.button("この従業員を削除", key=f"delete_{user['id']}", use_container_width=True, type="primary"):
                             st.session_state.confirming_delete_user_id = user['id']
                             st.rerun()
-
                         if st.session_state.get('confirming_delete_user_id') == user['id']:
                             confirm_delete_user_dialog(user['id'], user['name'])
                 
