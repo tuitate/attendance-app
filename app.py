@@ -139,13 +139,10 @@ def render_dm_chat_window(recipient_id, recipient_name):
                         st.download_button(label=f"📎 {msg['file_name']}", data=file_bytes, file_name=msg['file_name'], mime=msg['file_type'])
                 st.caption(datetime.fromisoformat(msg['created_at']).strftime('%H:%M'))
 
-    # --- ★★★ ここから修正 ★★★ ---
-    # 入力欄と送信ボタンを st.form で囲む
     with st.form(key=f"dm_form_{recipient_id}", clear_on_submit=True):
         message_input = st.text_area("メッセージを入力...", key=f"dm_input_{recipient_id}", label_visibility="collapsed", height=100)
         file_input = st.file_uploader("ファイルを添付", key=f"dm_file_{recipient_id}", label_visibility="collapsed")
-        
-        # ボタンを st.form_submit_button に変更
+
         submitted = st.form_submit_button("送信")
         
         if submitted:
@@ -159,7 +156,6 @@ def render_dm_chat_window(recipient_id, recipient_name):
                 
                 add_direct_message(current_user_id, recipient_id, message_input, file_base64, file_name, file_type)
                 st.rerun()
-    # --- ★★★ ここまで修正 ★★★ ---
 
 def delete_broadcast_message(created_at_iso):
     conn = get_db_connection()
@@ -276,28 +272,23 @@ def delete_user(user_id_to_delete):
         conn.close()
 
 def delete_all_company_data(company_name):
-    """会社の全データを削除する"""
     conn = get_db_connection()
     try:
-        # 会社に所属する全ユーザーのIDを取得
         users_in_company = conn.execute('SELECT id FROM users WHERE company = ?', (company_name,)).fetchall()
         user_ids = [user[0] for user in users_in_company]
         
         if not user_ids:
-            return True # 削除対象がなければ成功とする
+            return True
 
         placeholders = ','.join('?' for _ in user_ids)
-        
-        # 関連する勤怠IDを取得
+
         attendance_ids_tuples = conn.execute(f'SELECT id FROM attendance WHERE user_id IN ({placeholders})', user_ids).fetchall()
         attendance_ids = [item[0] for item in attendance_ids_tuples]
 
         if attendance_ids:
             att_placeholders = ','.join('?' for _ in attendance_ids)
-            # 休憩記録を削除
             conn.execute(f'DELETE FROM breaks WHERE attendance_id IN ({att_placeholders})', attendance_ids)
 
-        # 勤怠、シフト、メッセージ、ユーザーの順に削除
         conn.execute(f'DELETE FROM attendance WHERE user_id IN ({placeholders})', user_ids)
         conn.execute(f'DELETE FROM shifts WHERE user_id IN ({placeholders})', user_ids)
         conn.execute(f'DELETE FROM messages WHERE user_id IN ({placeholders}) OR sender_id IN ({placeholders})', user_ids + user_ids)
@@ -994,7 +985,6 @@ def show_user_info_page():
             st.divider()
             st.subheader("管理者用 危険な操作")
 
-            # --- 自身のアカウント削除 ---
             if st.session_state.confirm_delete_self_step == 0:
                 if st.button("自身の情報を削除", use_container_width=True, type="primary"):
                     st.session_state.confirm_delete_self_step = 1
@@ -1040,7 +1030,6 @@ def show_user_info_page():
                         st.session_state.confirm_delete_self_step = 0
                         st.rerun()
 
-            # --- 会社の全データ削除 ---
             if st.session_state.confirm_delete_company_step == 0:
                 if st.button("会社の全データを削除", use_container_width=True, type="primary"):
                     st.session_state.confirm_delete_company_step = 1
@@ -1131,10 +1120,8 @@ def show_employee_information_page():
                     st.write(f"**登録日時:** {datetime.fromisoformat(user['created_at']).strftime('%Y年%m月%d日 %H:%M')}")
 
                     show_delete_button = True
-                    # 自分自身は削除できない
                     if user['id'] == st.session_state.user_id:
                         show_delete_button = False
-                    # ログイン中のユーザーが「役職者」で、対象が「社長」の場合は削除できない
                     if st.session_state.user_position == "役職者" and user['position'] == "社長":
                         show_delete_button = False
                     
@@ -1578,22 +1565,17 @@ def main():
     if not st.session_state.get('logged_in'):
         show_login_register_page()
     else:
-        # Get latest attendance status on each run for sync
         if st.session_state.get('user_id'):
             get_today_attendance_status(st.session_state.user_id)
 
-        # Get unread message counts
         conn = get_db_connection()
         conn.row_factory = sqlite3.Row
         current_user_id = st.session_state.user_id
         broadcast_unread_count = conn.execute("SELECT COUNT(*) FROM messages WHERE user_id = ? AND is_read = 0 AND message_type IN ('BROADCAST', 'SYSTEM')", (current_user_id,)).fetchone()[0]
-        
-        # --- ★★★ This is the corrected section ★★★ ---
-        # Get the TOTAL unread DM count for the tab label
+
         dm_unread_count_row = conn.execute("SELECT COUNT(*) FROM messages WHERE user_id = ? AND is_read = 0 AND message_type = 'DIRECT'", (current_user_id,)).fetchone()
         dm_unread_count = dm_unread_count_row[0] if dm_unread_count_row else 0
 
-        # Get the unread DMs grouped by sender for the notification buttons
         unread_dm_query = """
             SELECT u.id, u.name, COUNT(m.id) as unread_count
             FROM messages m JOIN users u ON m.sender_id = u.id
@@ -1603,7 +1585,6 @@ def main():
         unread_dm_senders = conn.execute(unread_dm_query, (current_user_id,)).fetchall()
         conn.close()
 
-        # Display new DM notifications
         if unread_dm_senders:
             with st.container(border=True):
                 st.info("🔔 新着メッセージがあります！")
@@ -1616,8 +1597,7 @@ def main():
                         st.session_state.dm_selected_user_id = sender_id
                         st.session_state.page = "ダイレクトメッセージ"
                         st.rerun()
-        
-        # --- The rest of the function remains the same ---
+
         ordered_page_keys = ["タイムカード", "シフト管理", "シフト表", "出勤状況", "全体メッセージ", "ダイレクトメッセージ", "ユーザー情報"]
         if st.session_state.user_position in ["社長", "役職者"]:
             ordered_page_keys.insert(1, "従業員情報")
