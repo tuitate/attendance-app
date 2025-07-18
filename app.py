@@ -1341,7 +1341,7 @@ def display_work_summary():
             shift_duration = end_dt - start_dt
             scheduled_work_hours = shift_duration.total_seconds() / 3600
             scheduled_break_minutes = 0
-
+            
             if scheduled_work_hours > 8:
                 scheduled_break_minutes = 60
             elif scheduled_work_hours > 6:
@@ -1350,15 +1350,15 @@ def display_work_summary():
             if scheduled_break_minutes > 0:
                 break_start_estimate_dt = start_dt + (shift_duration / 2) - timedelta(minutes=scheduled_break_minutes / 2)
                 scheduled_break_start_time_str = break_start_estimate_dt.strftime('%H:%M')
-                scheduled_break_str = f"{scheduled_break_start_time_str} に {scheduled_break_minutes}分"
+                scheduled_break_str = f"{scheduled_break_start_time_str}頃に{scheduled_break_minutes}分"
                 reminder_time = break_start_estimate_dt - timedelta(minutes=10)
                 now = get_jst_now()
 
                 if st.session_state.last_break_reminder_date != today_str:
-                    if now.astimezone(JST) >= reminder_time.astimezone(JST) and now.astimezone(JST) < break_start_estimate_dt.astimezone(JST):
-                        add_message(st.session_state.user_id, "⏰ まもなく休憩の時間です。準備をしてください。")
+                    if now >= reminder_time and now < break_start_estimate_dt:
+                        reminder_message = f"⏰ まもなく休憩の時間です。本日の勤務では、少なくとも{scheduled_break_minutes}分の休憩が必要です。"
+                        add_message(st.session_state.user_id, reminder_message)                   
                         st.session_state.last_break_reminder_date = today_str
-                        st.toast("休憩10分前のお知らせをメッセージに送信しました。")
 
         st.divider()
         row1_col1, row1_col2 = st.columns(2)
