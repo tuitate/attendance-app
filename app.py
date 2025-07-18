@@ -166,6 +166,7 @@ def render_dm_chat_window(recipient_id, recipient_name):
                     file_type = file_input.type
                 
                 add_direct_message(current_user_id, recipient_id, message_input, file_base64, file_name, file_type)
+                st.session_state[f"dm_input_{recipient_id}"] = ""
                 st.rerun()
 
 def delete_broadcast_message(created_at_iso):
