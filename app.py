@@ -1312,8 +1312,9 @@ def record_clock_in_cancellation():
 def display_work_summary():
     if st.session_state.get('attendance_id'):
         conn = get_db_connection()
-        att = conn.execute('SELECT * FROM attendance WHERE id = ?', (st.session_state.attendance_id,)).fetchone()
-
+        conn.row_factory = sqlite3.Row
+        att = conn.execute('SELECT clock_in, clock_out FROM attendance WHERE id = ?', (st.session_state.attendance_id,)).fetchone()
+        
         if att is None:
             st.toast("勤怠記録が見つかりませんでした。状態をリセットします。")
             st.session_state.work_status = "not_started"
@@ -1323,12 +1324,9 @@ def display_work_summary():
             st.rerun()
             return
 
-        breaks = conn.execute('SELECT * FROM breaks WHERE attendance_id = ?', (st.session_state.attendance_id,)).fetchall()
+        breaks = conn.execute('SELECT break_start, break_end FROM breaks WHERE attendance_id = ?', (st.session_state.attendance_id,)).fetchall()
         today_str = get_jst_now().date().isoformat()
-        shift = conn.execute(
-            "SELECT start_datetime, end_datetime FROM shifts WHERE user_id = ? AND date(start_datetime) = ?",
-            (st.session_state.user_id, today_str)
-        ).fetchone()
+        shift = conn.execute("SELECT start_datetime, end_datetime FROM shifts WHERE user_id = ? AND date(start_datetime) = ?", (st.session_state.user_id, today_str)).fetchone()
         conn.close()
 
         scheduled_end_time_str = "---"
@@ -1341,7 +1339,7 @@ def display_work_summary():
             shift_duration = end_dt - start_dt
             scheduled_work_hours = shift_duration.total_seconds() / 3600
             scheduled_break_minutes = 0
-            
+
             if scheduled_work_hours > 8:
                 scheduled_break_minutes = 60
             elif scheduled_work_hours > 6:
@@ -1351,14 +1349,16 @@ def display_work_summary():
                 break_start_estimate_dt = start_dt + (shift_duration / 2) - timedelta(minutes=scheduled_break_minutes / 2)
                 scheduled_break_start_time_str = break_start_estimate_dt.strftime('%H:%M')
                 scheduled_break_str = f"{scheduled_break_start_time_str}頃に{scheduled_break_minutes}分"
+                
                 reminder_time = break_start_estimate_dt - timedelta(minutes=10)
                 now = get_jst_now()
 
                 if st.session_state.last_break_reminder_date != today_str:
-                    if now >= reminder_time and now < break_start_estimate_dt:
+                    if now >= reminder_time.replace(tzinfo=JST) and now < break_start_estimate_dt.replace(tzinfo=JST):
                         reminder_message = f"⏰ まもなく休憩の時間です。本日の勤務では、少なくとも{scheduled_break_minutes}分の休憩が必要です。"
-                        add_message(st.session_state.user_id, reminder_message)                   
+                        add_message(st.session_state.user_id, reminder_message)
                         st.session_state.last_break_reminder_date = today_str
+                        st.toast("休憩10分前のお知らせをメッセージに送信しました。")
 
         st.divider()
         row1_col1, row1_col2 = st.columns(2)
@@ -1384,8 +1384,7 @@ def display_work_summary():
         st.divider()
         if att['clock_in']:
             if att['clock_out']:
-                clock_out_time = datetime.fromisoformat(att['clock_out'])
-                total_work_seconds = (clock_out_time - datetime.fromisoformat(att['clock_in'])).total_seconds()
+                total_work_seconds = (datetime.fromisoformat(att['clock_out']) - datetime.fromisoformat(att['clock_in'])).total_seconds()
             else:
                 total_work_seconds = (get_jst_now() - datetime.fromisoformat(att['clock_in'])).total_seconds()
 
@@ -1399,17 +1398,15 @@ def display_work_summary():
         st.divider()
 
         if shift and not att['clock_out']:
-
             naive_end_dt = datetime.fromisoformat(shift['end_datetime'])
             end_dt = naive_end_dt.replace(tzinfo=JST)
-
             reminder_time = end_dt + timedelta(minutes=15)
             now = get_jst_now()
-            
+
             if now > reminder_time and st.session_state.get('last_clock_out_reminder_date') != today_str:
                 log_content = f"⏰ {st.session_state.user_name}さん、退勤予定時刻を15分過ぎています。速やかに退勤してください。"
                 add_attendance_log(st.session_state.user_id, log_content)
-                st.session_state.last_clock_out_reminder_date = today_st
+                st.session_state.last_clock_out_reminder_date = today_str
 
 def handle_page_change():
     if st.session_state.navigation_choice != 'ダイレクトメッセージ':
