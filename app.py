@@ -1330,7 +1330,7 @@ def display_work_summary():
         conn.close()
 
         scheduled_end_time_str = "---"
-        scheduled_break_str = "---"
+        scheduled_break_minutes = 0
 
         if shift:
             start_dt = datetime.fromisoformat(shift['start_datetime'])
@@ -1338,27 +1338,11 @@ def display_work_summary():
             scheduled_end_time_str = end_dt.strftime('%H:%M')
             shift_duration = end_dt - start_dt
             scheduled_work_hours = shift_duration.total_seconds() / 3600
-            scheduled_break_minutes = 0
 
             if scheduled_work_hours > 8:
                 scheduled_break_minutes = 60
             elif scheduled_work_hours > 6:
                 scheduled_break_minutes = 45
-
-            if scheduled_break_minutes > 0:
-                break_start_estimate_dt = start_dt + (shift_duration / 2) - timedelta(minutes=scheduled_break_minutes / 2)
-                scheduled_break_start_time_str = break_start_estimate_dt.strftime('%H:%M')
-                scheduled_break_str = f"{scheduled_break_start_time_str}頃に{scheduled_break_minutes}分"
-                
-                reminder_time = break_start_estimate_dt - timedelta(minutes=10)
-                now = get_jst_now()
-
-                if st.session_state.last_break_reminder_date != today_str:
-                    if now >= reminder_time.replace(tzinfo=JST) and now < break_start_estimate_dt.replace(tzinfo=JST):
-                        reminder_message = f"⏰ まもなく休憩の時間です。本日の勤務では、少なくとも{scheduled_break_minutes}分の休憩が必要です。"
-                        add_message(st.session_state.user_id, reminder_message)
-                        st.session_state.last_break_reminder_date = today_str
-                        st.toast("休憩10分前のお知らせをメッセージに送信しました。")
 
         st.divider()
         row1_col1, row1_col2 = st.columns(2)
@@ -1368,8 +1352,32 @@ def display_work_summary():
             st.metric("出勤時刻", datetime.fromisoformat(att['clock_in']).strftime('%H:%M:%S') if att['clock_in'] else "---")
         with row1_col2:
             st.metric("退勤予定時刻", scheduled_end_time_str)
+
         with row2_col1:
-            st.metric("休憩予定", scheduled_break_str)
+            if st.session_state.work_status == "on_break" and scheduled_break_minutes > 0:
+                current_break_start_str = None
+                for br in breaks:
+                    if br['break_start'] and not br['break_end']:
+                        current_break_start_str = br['break_start']
+                        break
+                
+                if current_break_start_str:
+                    break_start_dt = datetime.fromisoformat(current_break_start_str)
+                    break_end_estimate_dt = break_start_dt + timedelta(minutes=scheduled_break_minutes)
+                    break_end_str = f"{break_end_estimate_dt.strftime('%H:%M')}頃に休憩終了"
+                    st.metric("休憩終了時刻", break_end_str)
+                else:
+                    st.metric("休憩予定", "---")
+            else:
+                scheduled_break_str = "---"
+                if shift and scheduled_break_minutes > 0:
+                    start_dt = datetime.fromisoformat(shift['start_datetime'])
+                    shift_duration = datetime.fromisoformat(shift['end_datetime']) - start_dt
+                    break_start_estimate_dt = start_dt + (shift_duration / 2) - timedelta(minutes=scheduled_break_minutes / 2)
+                    scheduled_break_start_time_str = break_start_estimate_dt.strftime('%H:%M')
+                    scheduled_break_str = f"{scheduled_break_start_time_str}頃に{scheduled_break_minutes}分"
+                st.metric("休憩予定", scheduled_break_str)
+
         with row2_col2:
             total_break_seconds = 0
             for br in breaks:
@@ -1397,12 +1405,24 @@ def display_work_summary():
 
         st.divider()
 
+        if shift and scheduled_break_minutes > 0:
+            start_dt = datetime.fromisoformat(shift['start_datetime'])
+            shift_duration = datetime.fromisoformat(shift['end_datetime']) - start_dt
+            break_start_estimate_dt = start_dt + (shift_duration / 2) - timedelta(minutes=scheduled_break_minutes / 2)
+            reminder_time = break_start_estimate_dt - timedelta(minutes=10)
+            now = get_jst_now()
+            if st.session_state.last_break_reminder_date != today_str:
+                if now >= reminder_time.replace(tzinfo=JST) and now < break_start_estimate_dt.replace(tzinfo=JST):
+                    reminder_message = f"⏰ まもなく休憩の時間です。本日の勤務では、少なくとも{scheduled_break_minutes}分の休憩が必要です。"
+                    add_message(st.session_state.user_id, reminder_message)
+                    st.session_state.last_break_reminder_date = today_str
+                    st.toast("休憩10分前のお知らせをメッセージに送信しました。")
+
         if shift and not att['clock_out']:
             naive_end_dt = datetime.fromisoformat(shift['end_datetime'])
             end_dt = naive_end_dt.replace(tzinfo=JST)
             reminder_time = end_dt + timedelta(minutes=15)
             now = get_jst_now()
-
             if now > reminder_time and st.session_state.get('last_clock_out_reminder_date') != today_str:
                 log_content = f"⏰ {st.session_state.user_name}さん、退勤予定時刻を15分過ぎています。速やかに退勤してください。"
                 add_attendance_log(st.session_state.user_id, log_content)
