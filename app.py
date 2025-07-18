@@ -1351,13 +1351,13 @@ def display_work_summary():
 
         with row1_col1:
             st.metric("出勤時刻", datetime.fromisoformat(att['clock_in']).strftime('%H:%M:%S') if att['clock_in'] else "---")
-       with row1_col2:
+        with row1_col2:
             if st.session_state.work_status == "finished":
                 actual_clock_out_time = datetime.fromisoformat(att['clock_out']).strftime('%H:%M:%S') if att['clock_out'] else "---"
                 st.metric("退勤時刻", actual_clock_out_time)
             else:
                 st.metric("退勤予定時刻", scheduled_end_time_str)
-
+                
         with row2_col1:
             if st.session_state.work_status == "on_break" and scheduled_break_minutes > 0:
                 current_break_start_str = None
