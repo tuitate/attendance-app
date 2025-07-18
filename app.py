@@ -389,6 +389,7 @@ def show_login_register_page():
                         
     elif choice == "新規登録":
         with st.form("register_form"):
+            st.markdown("従業員IDは半角数字で設定してください。")
             st.markdown("パスワードは、大文字、小文字、数字を含む8文字以上で設定してください。")
             new_name = st.text_input("名前")
             new_company = st.text_input("会社名")
