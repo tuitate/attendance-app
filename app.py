@@ -990,33 +990,43 @@ def show_user_info_page():
                             st.success("パスワードが正常に変更されました。")
                             add_message(st.session_state.user_id, "🔒 パスワードが変更されました。")
 
-        # --- ★★★ ここから社長専用の危険な操作機能を追加 ★★★ ---
         if st.session_state.user_position == "社長":
             st.divider()
             st.subheader("管理者用 危険な操作")
 
             # --- 自身のアカウント削除 ---
-            if st.button("自身の情報を削除", use_container_width=True, type="primary"):
-                st.session_state.confirm_delete_self_step = 1
-                st.rerun()
+            if st.session_state.confirm_delete_self_step == 0:
+                if st.button("自身の情報を削除", use_container_width=True, type="primary"):
+                    st.session_state.confirm_delete_self_step = 1
+                    st.rerun()
             
             if st.session_state.confirm_delete_self_step == 1:
                 st.warning("【ステップ1/3】本当にあなた自身のアカウントを削除しますか？この操作は元に戻せません。")
-                if st.button("はい、削除に進みます", key="self_del_step1"):
+                c1, c2 = st.columns(2)
+                if c1.button("はい、削除に進みます", key="self_del_step1", use_container_width=True):
                     st.session_state.confirm_delete_self_step = 2
+                    st.rerun()
+                if c2.button("戻る", key="self_del_back1", use_container_width=True):
+                    st.session_state.confirm_delete_self_step = 0
                     st.rerun()
 
             if st.session_state.confirm_delete_self_step == 2:
                 st.warning("【ステップ2/3】最終確認です。あなたのアカウントと関連する全てのデータ（勤怠、シフト等）が完全に削除されます。")
-                if st.button("はい、理解した上で削除に進みます", key="self_del_step2"):
+                c1, c2 = st.columns(2)
+                if c1.button("はい、理解した上で削除に進みます", key="self_del_step2", use_container_width=True):
                     st.session_state.confirm_delete_self_step = 3
+                    st.rerun()
+                if c2.button("戻る", key="self_del_back2", use_container_width=True):
+                    st.session_state.confirm_delete_self_step = 0
                     st.rerun()
 
             if st.session_state.confirm_delete_self_step == 3:
                 st.warning("【ステップ3/3】パスワードを入力して、アカウント削除を最終実行してください。")
                 with st.form("self_delete_form"):
                     password = st.text_input("パスワード", type="password")
-                    submitted = st.form_submit_button("アカウントを完全に削除する")
+                    c1, c2 = st.columns(2)
+                    submitted = c1.form_submit_button("アカウントを完全に削除する", type="primary", use_container_width=True)
+                    cancelled = c2.form_submit_button("戻る", use_container_width=True)
                     if submitted:
                         if user_data['password_hash'] == hash_password(password):
                             if delete_user(st.session_state.user_id):
@@ -1026,29 +1036,43 @@ def show_user_info_page():
                                 st.rerun()
                         else:
                             st.error("パスワードが正しくありません。")
+                    if cancelled:
+                        st.session_state.confirm_delete_self_step = 0
+                        st.rerun()
 
             # --- 会社の全データ削除 ---
-            if st.button("会社の全データを削除", use_container_width=True, type="primary"):
-                st.session_state.confirm_delete_company_step = 1
-                st.rerun()
+            if st.session_state.confirm_delete_company_step == 0:
+                if st.button("会社の全データを削除", use_container_width=True, type="primary"):
+                    st.session_state.confirm_delete_company_step = 1
+                    st.rerun()
 
             if st.session_state.confirm_delete_company_step == 1:
                 st.warning(f"【ステップ1/3】本当に会社「{user_data['company']}」の全データを削除しますか？あなたを含む全従業員のアカウント、全ての勤怠・シフト・メッセージ履歴が削除されます。")
-                if st.button("はい、全削除に進みます", key="comp_del_step1"):
+                c1, c2 = st.columns(2)
+                if c1.button("はい、全削除に進みます", key="comp_del_step1", use_container_width=True):
                     st.session_state.confirm_delete_company_step = 2
+                    st.rerun()
+                if c2.button("戻る", key="comp_del_back1", use_container_width=True):
+                    st.session_state.confirm_delete_company_step = 0
                     st.rerun()
             
             if st.session_state.confirm_delete_company_step == 2:
                 st.warning("【ステップ2/3】最終警告です。この操作は絶対に元に戻すことはできません。会社の全データが失われることを本当に理解していますか？")
-                if st.button("はい、全てのデータが失われることを理解した上で削除に進みます", key="comp_del_step2"):
+                c1, c2 = st.columns(2)
+                if c1.button("はい、全てのデータが失われることを理解した上で削除に進みます", key="comp_del_step2", use_container_width=True):
                     st.session_state.confirm_delete_company_step = 3
+                    st.rerun()
+                if c2.button("戻る", key="comp_del_back2", use_container_width=True):
+                    st.session_state.confirm_delete_company_step = 0
                     st.rerun()
 
             if st.session_state.confirm_delete_company_step == 3:
                 st.warning("【ステップ3/3】パスワードを入力して、会社の全データ削除を最終実行してください。")
                 with st.form("company_delete_form"):
                     password = st.text_input("パスワード", type="password")
-                    submitted = st.form_submit_button("会社の全データを完全に削除する")
+                    c1, c2 = st.columns(2)
+                    submitted = c1.form_submit_button("会社の全データを完全に削除する", type="primary", use_container_width=True)
+                    cancelled = c2.form_submit_button("戻る", use_container_width=True)
                     if submitted:
                         if user_data['password_hash'] == hash_password(password):
                             if delete_all_company_data(user_data['company']):
@@ -1058,6 +1082,9 @@ def show_user_info_page():
                                 st.rerun()
                         else:
                             st.error("パスワードが正しくありません。")
+                    if cancelled:
+                        st.session_state.confirm_delete_company_step = 0
+                        st.rerun()
 
 def confirm_delete_user_dialog(user_id, user_name):
     st.warning(f"本当に従業員「{user_name}」さんを削除しますか？\n\nこの操作は元に戻せません。関連するすべての勤怠記録やシフト情報も削除されます。")
