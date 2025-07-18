@@ -108,33 +108,26 @@ def render_dm_chat_window(recipient_id, recipient_name):
     current_user_id = st.session_state.user_id
     conn = get_db_connection()
     try:
-        conn.execute("""
-            UPDATE messages
-            SET is_read = 1
-            WHERE user_id = ? AND sender_id = ? AND is_read = 0 AND message_type = 'DIRECT'
-        """, (current_user_id, recipient_id))
+        conn.execute("UPDATE messages SET is_read = 1 WHERE user_id = ? AND sender_id = ? AND is_read = 0 AND message_type = 'DIRECT'",
+                     (current_user_id, recipient_id))
         conn.commit()
-    except sqlite3.Error as e:
-        print(f"DMの既読処理中にエラー: {e}")
     finally:
         conn.close()
 
     chat_container = st.container(height=500)
     with chat_container:
         conn = get_db_connection()
+        conn.row_factory = sqlite3.Row
         messages = conn.execute("""
-            SELECT * FROM messages
-            WHERE message_type = 'DIRECT' AND
-                  ((user_id = ? AND sender_id = ?) OR (user_id = ? AND sender_id = ?))
+            SELECT sender_id, content, created_at, file_base64, file_name, file_type FROM messages
+            WHERE message_type = 'DIRECT' AND ((user_id = ? AND sender_id = ?) OR (user_id = ? AND sender_id = ?))
             ORDER BY created_at ASC
         """, (current_user_id, recipient_id, recipient_id, current_user_id)).fetchall()
         conn.close()
 
         for msg in messages:
             role = "user" if msg['sender_id'] == current_user_id else "assistant"
-
-            created_at_dt = datetime.fromisoformat(msg['created_at'])
-
+            
             with st.chat_message(role):
                 if msg['content']:
                     st.markdown(msg['content'])
@@ -143,20 +136,19 @@ def render_dm_chat_window(recipient_id, recipient_name):
                     if msg['file_type'] and msg['file_type'].startswith("image/"):
                         st.image(file_bytes)
                     else:
-                        st.download_button(
-                            label=f"📎 {msg['file_name']}",
-                            data=file_bytes,
-                            file_name=msg['file_name'],
-                            mime=msg['file_type']
-                        )
+                        st.download_button(label=f"📎 {msg['file_name']}", data=file_bytes, file_name=msg['file_name'], mime=msg['file_type'])
+                st.caption(datetime.fromisoformat(msg['created_at']).strftime('%H:%M'))
 
-                st.caption(created_at_dt.strftime('%H:%M'))
-
-    with st.container():
+    # --- ★★★ ここから修正 ★★★ ---
+    # 入力欄と送信ボタンを st.form で囲む
+    with st.form(key=f"dm_form_{recipient_id}", clear_on_submit=True):
         message_input = st.text_area("メッセージを入力...", key=f"dm_input_{recipient_id}", label_visibility="collapsed", height=100)
         file_input = st.file_uploader("ファイルを添付", key=f"dm_file_{recipient_id}", label_visibility="collapsed")
         
-        if st.button("送信", key=f"dm_send_{recipient_id}"):
+        # ボタンを st.form_submit_button に変更
+        submitted = st.form_submit_button("送信")
+        
+        if submitted:
             if message_input or file_input:
                 file_base64, file_name, file_type = None, None, None
                 if file_input:
@@ -166,8 +158,8 @@ def render_dm_chat_window(recipient_id, recipient_name):
                     file_type = file_input.type
                 
                 add_direct_message(current_user_id, recipient_id, message_input, file_base64, file_name, file_type)
-                st.session_state[f"dm_input_{recipient_id}"] = ""
                 st.rerun()
+    # --- ★★★ ここまで修正 ★★★ ---
 
 def delete_broadcast_message(created_at_iso):
     conn = get_db_connection()
