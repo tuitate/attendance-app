@@ -210,6 +210,9 @@ def init_session_state():
         'action_just_performed': False,
         'viewing_attendance_log': False, 
         'daily_tip': None,
+        'confirm_delete_self_step': 0,
+        'confirm_delete_company_step': 0,
+        'password_error': None,
     }
     for key, default_value in defaults.items():
         if key not in st.session_state:
@@ -267,6 +270,43 @@ def delete_user(user_id_to_delete):
         return True
     except sqlite3.Error as e:
         print(f"ユーザー削除中にエラーが発生しました: {e}")
+        conn.rollback()
+        return False
+    finally:
+        conn.close()
+
+def delete_all_company_data(company_name):
+    """会社の全データを削除する"""
+    conn = get_db_connection()
+    try:
+        # 会社に所属する全ユーザーのIDを取得
+        users_in_company = conn.execute('SELECT id FROM users WHERE company = ?', (company_name,)).fetchall()
+        user_ids = [user[0] for user in users_in_company]
+        
+        if not user_ids:
+            return True # 削除対象がなければ成功とする
+
+        placeholders = ','.join('?' for _ in user_ids)
+        
+        # 関連する勤怠IDを取得
+        attendance_ids_tuples = conn.execute(f'SELECT id FROM attendance WHERE user_id IN ({placeholders})', user_ids).fetchall()
+        attendance_ids = [item[0] for item in attendance_ids_tuples]
+
+        if attendance_ids:
+            att_placeholders = ','.join('?' for _ in attendance_ids)
+            # 休憩記録を削除
+            conn.execute(f'DELETE FROM breaks WHERE attendance_id IN ({att_placeholders})', attendance_ids)
+
+        # 勤怠、シフト、メッセージ、ユーザーの順に削除
+        conn.execute(f'DELETE FROM attendance WHERE user_id IN ({placeholders})', user_ids)
+        conn.execute(f'DELETE FROM shifts WHERE user_id IN ({placeholders})', user_ids)
+        conn.execute(f'DELETE FROM messages WHERE user_id IN ({placeholders}) OR sender_id IN ({placeholders})', user_ids + user_ids)
+        conn.execute(f'DELETE FROM users WHERE id IN ({placeholders})', user_ids)
+        
+        conn.commit()
+        return True
+    except sqlite3.Error as e:
+        print(f"会社データ削除中にエラー: {e}")
         conn.rollback()
         return False
     finally:
@@ -917,15 +957,16 @@ def show_messages_page():
 def show_user_info_page():
     st.header("ユーザー情報")
     conn = get_db_connection()
-    user_data = conn.execute('SELECT name, employee_id, created_at, password_hash, company, position FROM users WHERE id = ?', (st.session_state.user_id,)).fetchone()
+    conn.row_factory = sqlite3.Row
+    user_data = conn.execute('SELECT id, name, employee_id, created_at, password_hash, company, position FROM users WHERE id = ?', (st.session_state.user_id,)).fetchone()
     conn.close()
+
     if user_data:
         st.text_input("名前", value=user_data['name'], disabled=True)
         st.text_input("会社名", value=user_data['company'] or '未登録', disabled=True)
         st.text_input("役職", value=user_data['position'] or '未登録', disabled=True)
         st.text_input("従業員ID", value=user_data['employee_id'], disabled=True)
-        created_dt = datetime.fromisoformat(user_data['created_at'])
-        st.text_input("登録日時", value=created_dt.strftime('%Y年%m月%d日 %H:%M:%S'), disabled=True)
+        st.text_input("登録日時", value=datetime.fromisoformat(user_data['created_at']).strftime('%Y年%m月%d日 %H:%M:%S'), disabled=True)
         st.divider()
         st.subheader("パスワードの変更")
         with st.form("password_change_form"):
@@ -943,14 +984,80 @@ def show_user_info_page():
                 else:
                     password_errors = validate_password(new_password)
                     if password_errors:
-                        error_message = "新しいパスワードは以下の要件を満たす必要があります：\n" + "\n".join(password_errors)
-                        st.error(error_message)
+                        st.error("新しいパスワードは以下の要件を満たす必要があります：\n" + "\n".join(password_errors))
                     else:
                         if update_user_password(st.session_state.user_id, new_password):
                             st.success("パスワードが正常に変更されました。")
                             add_message(st.session_state.user_id, "🔒 パスワードが変更されました。")
+
+        # --- ★★★ ここから社長専用の危険な操作機能を追加 ★★★ ---
+        if st.session_state.user_position == "社長":
+            st.divider()
+            st.subheader("管理者用 危険な操作")
+
+            # --- 自身のアカウント削除 ---
+            if st.button("自身の情報を削除", use_container_width=True, type="primary"):
+                st.session_state.confirm_delete_self_step = 1
+                st.rerun()
+            
+            if st.session_state.confirm_delete_self_step == 1:
+                st.warning("【ステップ1/3】本当にあなた自身のアカウントを削除しますか？この操作は元に戻せません。")
+                if st.button("はい、削除に進みます", key="self_del_step1"):
+                    st.session_state.confirm_delete_self_step = 2
+                    st.rerun()
+
+            if st.session_state.confirm_delete_self_step == 2:
+                st.warning("【ステップ2/3】最終確認です。あなたのアカウントと関連する全てのデータ（勤怠、シフト等）が完全に削除されます。")
+                if st.button("はい、理解した上で削除に進みます", key="self_del_step2"):
+                    st.session_state.confirm_delete_self_step = 3
+                    st.rerun()
+
+            if st.session_state.confirm_delete_self_step == 3:
+                st.warning("【ステップ3/3】パスワードを入力して、アカウント削除を最終実行してください。")
+                with st.form("self_delete_form"):
+                    password = st.text_input("パスワード", type="password")
+                    submitted = st.form_submit_button("アカウントを完全に削除する")
+                    if submitted:
+                        if user_data['password_hash'] == hash_password(password):
+                            if delete_user(st.session_state.user_id):
+                                st.success("アカウントを削除しました。ログアウトします。")
+                                py_time.sleep(2)
+                                for key in list(st.session_state.keys()): del st.session_state[key]
+                                st.rerun()
                         else:
-                            st.error("パスワードの変更中にエラーが発生しました。")
+                            st.error("パスワードが正しくありません。")
+
+            # --- 会社の全データ削除 ---
+            if st.button("会社の全データを削除", use_container_width=True, type="primary"):
+                st.session_state.confirm_delete_company_step = 1
+                st.rerun()
+
+            if st.session_state.confirm_delete_company_step == 1:
+                st.warning(f"【ステップ1/3】本当に会社「{user_data['company']}」の全データを削除しますか？あなたを含む全従業員のアカウント、全ての勤怠・シフト・メッセージ履歴が削除されます。")
+                if st.button("はい、全削除に進みます", key="comp_del_step1"):
+                    st.session_state.confirm_delete_company_step = 2
+                    st.rerun()
+            
+            if st.session_state.confirm_delete_company_step == 2:
+                st.warning("【ステップ2/3】最終警告です。この操作は絶対に元に戻すことはできません。会社の全データが失われることを本当に理解していますか？")
+                if st.button("はい、全てのデータが失われることを理解した上で削除に進みます", key="comp_del_step2"):
+                    st.session_state.confirm_delete_company_step = 3
+                    st.rerun()
+
+            if st.session_state.confirm_delete_company_step == 3:
+                st.warning("【ステップ3/3】パスワードを入力して、会社の全データ削除を最終実行してください。")
+                with st.form("company_delete_form"):
+                    password = st.text_input("パスワード", type="password")
+                    submitted = st.form_submit_button("会社の全データを完全に削除する")
+                    if submitted:
+                        if user_data['password_hash'] == hash_password(password):
+                            if delete_all_company_data(user_data['company']):
+                                st.success("会社の全データを削除しました。ログアウトします。")
+                                py_time.sleep(2)
+                                for key in list(st.session_state.keys()): del st.session_state[key]
+                                st.rerun()
+                        else:
+                            st.error("パスワードが正しくありません。")
 
 def confirm_delete_user_dialog(user_id, user_name):
     st.warning(f"本当に従業員「{user_name}」さんを削除しますか？\n\nこの操作は元に戻せません。関連するすべての勤怠記録やシフト情報も削除されます。")
