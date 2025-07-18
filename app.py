@@ -1446,16 +1446,29 @@ def main():
         current_user_id = st.session_state.user_id
         broadcast_unread_count = conn.execute("SELECT COUNT(*) FROM messages WHERE user_id = ? AND is_read = 0 AND message_type IN ('BROADCAST', 'SYSTEM')", (current_user_id,)).fetchone()[0]
         dm_unread_count_row = conn.execute("SELECT COUNT(*) FROM messages WHERE user_id = ? AND is_read = 0 AND message_type = 'DIRECT'", (current_user_id,)).fetchone()
-        dm_unread_count = dm_unread_count_row[0] if dm_unread_count_row else 0
-        unread_dm_senders = conn.execute("SELECT DISTINCT u.id, u.name FROM messages m JOIN users u ON m.sender_id = u.id WHERE m.user_id = ? AND m.is_read = 0 AND m.message_type = 'DIRECT'", (current_user_id,)).fetchall()
+        unread_dm_query = """
+            SELECT u.id, u.name, COUNT(m.id) as unread_count
+            FROM messages m JOIN users u ON m.sender_id = u.id
+            WHERE m.user_id = ? AND m.is_read = 0 AND m.message_type = 'DIRECT'
+            GROUP BY u.id, u.name
+        """
+        unread_dm_senders = conn.execute(unread_dm_query, (current_user_id,)).fetchall()
         conn.close()
 
+        # 新着DM通知
         if unread_dm_senders:
             with st.container(border=True):
                 st.info("🔔 新着メッセージがあります！")
                 for sender in unread_dm_senders:
-                    if st.button(f"📩 **{sender['name']}さん**から新しいメッセージが届いています。", key=f"dm_notification_{sender['id']}", use_container_width=True):
-                        st.session_state.dm_selected_user_id = sender['id']
+                    sender_id = sender['id']
+                    sender_name = sender['name']
+                    unread_count = sender['unread_count']
+                    
+                    # ボタンの表示テキストを件数付きに変更
+                    button_text = f"📩 **{sender_name}さん**から{unread_count}件の新しいメッセージが届いています。"
+                    
+                    if st.button(button_text, key=f"dm_notification_{sender_id}", use_container_width=True):
+                        st.session_state.dm_selected_user_id = sender_id
                         st.session_state.page = "ダイレクトメッセージ"
                         st.rerun()
 
