@@ -332,7 +332,7 @@ def shift_edit_dialog(target_date):
 def show_login_register_page():
     st.header("ログインまたは新規登録")
     menu = ["ログイン", "新規登録"]
-    choice = st.selectbox("メニューを選択", menu)
+    choice = st.selectbox("メニューを選択", menu,disabled=True)
     
     if choice == "ログイン":
         with st.form("login_form"):
@@ -361,7 +361,7 @@ def show_login_register_page():
             st.markdown("パスワードは、大文字、小文字、数字を含む8文字以上で設定してください。")
             new_name = st.text_input("名前")
             new_company = st.text_input("会社名")
-            new_position = st.radio("役職", ("社長", "役職者"), horizontal=True)
+            new_position = st.radio("役職", ("社長",), horizontal=True)
             new_employee_id = st.text_input("従業員ID")
             new_password = st.text_input("パスワード", type="password")
             confirm_password = st.text_input("パスワード（確認用）", type="password")
