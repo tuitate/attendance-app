@@ -359,9 +359,10 @@ def broadcast_message_dialog():
 @st.dialog("シフト登録・編集")
 def shift_edit_dialog(target_date):
     pass
-    
+
 def show_login_register_page():
     st.header("ログインまたは新規登録")
+    
     menu = ["ログイン", "新規登録"]
     choice = st.radio("メニューを選択", menu, horizontal=True)
     
@@ -371,8 +372,9 @@ def show_login_register_page():
             password = st.text_input("パスワード", type="password")
             submitted = st.form_submit_button("ログイン")
             if submitted:
-                if not employee_id.isdigit():
-                    st.error("従業員IDは数字で入力してください。")
+                # 半角数字のみを許可
+                if not re.match(r'^[0-9]+$', employee_id):
+                    st.error("従業員IDは半角数字で入力してください。")
                 else:
                     user = get_user(employee_id)
                     if user and user[3] == hash_password(password):
@@ -381,7 +383,6 @@ def show_login_register_page():
                         st.session_state.user_name = user[1]
                         st.session_state.user_company = user[5]
                         st.session_state.user_position = user[6]
-                        get_today_attendance_status(user[0])
                         st.session_state.daily_tip = random.choice(TIPS)
                         st.rerun()
                     else:
@@ -389,7 +390,6 @@ def show_login_register_page():
                         
     elif choice == "新規登録":
         with st.form("register_form"):
-            st.markdown("従業員IDは半角数字で設定してください。")
             st.markdown("パスワードは、大文字、小文字、数字を含む8文字以上で設定してください。")
             new_name = st.text_input("名前")
             new_company = st.text_input("会社名")
@@ -399,11 +399,13 @@ def show_login_register_page():
             confirm_password = st.text_input("パスワード（確認用）", type="password")
             submitted = st.form_submit_button("登録してログイン")
             if submitted:
+                is_hankaku_numeric = re.match(r'^[0-9]+$', new_employee_id) is not None
+                
                 password_errors = validate_password(new_password)
                 if not (new_name and new_company and new_employee_id and new_password):
                     st.warning("名前、会社名、従業員ID、パスワードは必須項目です。")
-                elif not new_employee_id.isdigit():
-                    st.error("従業員IDは数字で入力してください。")
+                elif not is_hankaku_numeric:
+                    st.error("従業員IDは半角数字で入力してください。")
                 elif new_password != confirm_password:
                     st.error("パスワードが一致しません。")
                 elif password_errors:
@@ -418,44 +420,8 @@ def show_login_register_page():
                             st.session_state.user_name = user[1]
                             st.session_state.user_company = user[5]
                             st.session_state.user_position = user[6]
-                            get_today_attendance_status(user[0])
                             st.session_state.daily_tip = random.choice(TIPS)
                             st.rerun()
-                    else:
-                        st.error("その従業員IDは既に使用されています。")
-                        
-    elif choice == "新規登録":
-        with st.form("register_form"):
-            st.markdown("パスワードは、大文字、小文字、数字を含む8文字以上で設定してください。")
-            new_name = st.text_input("名前")
-            new_company = st.text_input("会社名")
-            new_position = st.radio("役職", ("社長", "役職者"), horizontal=True)
-            new_employee_id = st.text_input("従業員ID")
-            new_password = st.text_input("パスワード", type="password")
-            confirm_password = st.text_input("パスワード（確認用）", type="password")
-            submitted = st.form_submit_button("登録してログイン")
-            if submitted:
-                password_errors = validate_password(new_password)
-                if not (new_name and new_company and new_employee_id and new_password):
-                    st.warning("名前、会社名、従業員ID、パスワードは必須項目です。")
-                elif not new_employee_id.isdigit():
-                    st.error("従業員IDは数字で入力してください。")
-                elif new_password != confirm_password:
-                    st.error("パスワードが一致しません。")
-                elif password_errors:
-                    error_message = "パスワードは以下の要件を満たす必要があります：\n" + "\n".join(password_errors)
-                    st.error(error_message)
-                else:
-                    if register_user(new_name, new_employee_id, new_password, new_company, new_position):
-                        st.success("登録が完了しました。")
-                        user = get_user(new_employee_id)
-                        if user:
-                            st.session_state.logged_in = True
-                            st.session_state.user_id = user['id']
-                            st.session_state.user_name = user['name']
-                            st.session_state.user_company = user['company']
-                            st.session_state.user_position = user['position']
-                            get_today_attendance_status(user['id'])
                     else:
                         st.error("その従業員IDは既に使用されています。")
 
