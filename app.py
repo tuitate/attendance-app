@@ -332,7 +332,7 @@ def shift_edit_dialog(target_date):
 def show_login_register_page():
     st.header("ログインまたは新規登録")
     menu = ["ログイン", "新規登録"]
-    choice = st.selectbox("メニューを選択", menu,disabled=True)
+    choice = st.radio("メニューを選択", menu, horizontal=True)
     
     if choice == "ログイン":
         with st.form("login_form"):
