@@ -992,7 +992,7 @@ def show_user_info_page():
 
         if st.session_state.user_position == "社長":
             st.divider()
-            st.subheader("管理者用 危険な操作")
+            st.subheader("社長専用 危険な操作")
 
             # --- 自身のアカウント削除 ---
             if st.session_state.confirm_delete_self_step == 0:
