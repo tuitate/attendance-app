@@ -1152,7 +1152,7 @@ def show_work_status_page():
     st.divider()
 
     st.subheader("📊 実働時間グラフ")
-    tab7, tab30, tab_year = st.tabs(["過去7日間", "当月", "当年"])
+    tab7, tab30, tab_year = st.tabs(["当週", "当月", "当年"])
 
     with tab7:
         today = date.today()
