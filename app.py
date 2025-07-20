@@ -1147,7 +1147,6 @@ def show_user_registration_page():
                     st.error("その従業員IDは既に使用されています。")
 
 def get_work_hours_data(start_date, end_date):
-    """指定された期間の実働時間データを取得する"""
     conn = get_db_connection()
     conn.row_factory = sqlite3.Row
     
